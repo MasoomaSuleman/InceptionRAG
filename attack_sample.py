@@ -31,6 +31,8 @@ def main():
     parser.add_argument("--retrieval-top-k", type=int, default=10)
     parser.add_argument("--retrieval-first-k", type=int, default=20)
     parser.add_argument("--cttft-neighbor-k", type=int, default=10)
+    parser.add_argument("--no-noise", action="store_true", help="Disable noise injection")
+    parser.add_argument("--no-dual-injection", action="store_true", help="Disable dual-ended injection")
     args = parser.parse_args()
     
     BASE_DIR = Path(__file__).resolve().parent
@@ -42,6 +44,8 @@ def main():
         retrieval_top_k=args.retrieval_top_k,
         retrieval_first_k=args.retrieval_first_k,
         cttft_neighbor_k=args.cttft_neighbor_k,
+        noise_injection=not args.no_noise,
+        dual_injection=not args.no_dual_injection,
     )
     
     print("=" * 60)
