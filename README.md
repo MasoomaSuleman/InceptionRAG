@@ -88,7 +88,13 @@ InceptionRAG/data/
 
 ## Quick Start
 
-### 0. Data Preparation (Required before running attacks)
+### 0. Install Dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 1. Data Preparation (Required before running attacks)
 
 The data preparation phase includes three parts:
 
@@ -143,7 +149,7 @@ python -m InceptionRAG.scripts.generate_suffix_pool \
 | ZOSO results | `data/suffix_pool/zoso_results/{model}/{ds}_zoso_results.json` |
 | Generated ADV | `data/adv/{ds}/{ds}_0-{limit}_with_ad.json` |
 
-### 1. Quick Attack with Pre-generated Data (Recommended for Testing)
+### 2. Quick Attack with Pre-generated Data (Recommended for Testing)
 
 Use `attack_sample.py` to run attacks with pre-generated adversarial samples and ZOSO-optimized suffixes:
 
@@ -170,7 +176,7 @@ python InceptionRAG/attack_sample.py \
 - Supports multiple models: `gemini-2-0-flash`, `gpt-3-5-turbo`, `grok-4`
 - CTTFT cascade attack (L1→L2→L3)
 
-### 2. Full Pipeline Attack (From Scratch)
+### 3. Full Pipeline Attack (From Scratch)
 
 Use `run_attack.py` to run the complete three-stage attack from raw data:
 
@@ -202,12 +208,6 @@ python -m InceptionRAG.run_attack \
     --dataset nq \
     --limit 100 \
     --output InceptionRAG/results/nq_attack.json
-```
-
-### 3. Install Dependencies
-
-```bash
-pip install -r requirements.txt
 ```
 
 ### 4. Build Corpus Index (If not using download script)
@@ -248,7 +248,7 @@ python InceptionRAG/data/build_corpus_index.py \
 | HotpotQA | `/data2/Jiachang-Zhang/dataset/hotpotqa/cache/` |
 | MSMARCO | `/data2/Jiachang-Zhang/dataset/msmarco/cache/` |
 
-### 5. Models (Auto-downloaded from HuggingFace)
+### 5. Models (Auto-downloaded)
 
 | Model | HuggingFace ID | Purpose |
 |-------|----------------|---------|

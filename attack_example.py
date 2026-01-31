@@ -58,7 +58,7 @@ def main():
     model_folder = llm_config.model.replace(".", "-").replace(" ", "-")
     
     # Paths (使用 data/example/ 和 data/suffix_pool/)
-    example_path = BASE_DIR / f"data/example/{ds}_0-100_with_ad.json"
+    example_path = BASE_DIR / f"data/example/{ds}_100_with_ad.json"
     suffix_pool_path = BASE_DIR / "data/suffix_pool/suffix_candidates.json"
     zoso_results_path = BASE_DIR / f"data/suffix_pool/zoso_results/{model_folder}/{ds}_zoso_results.json"
     corpus_embs_path = BASE_DIR / f"data/corpus/{ds}_contriever_embs.npy"
