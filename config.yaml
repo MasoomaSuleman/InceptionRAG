@@ -1,0 +1,15 @@
+# InceptionRAG Configuration
+# Copy from config.yaml.template and fill in your API credentials
+
+llm:
+  provider: "custom"           # openai / azure / custom
+  api_key: "YOUR_API_KEY"      # Replace with your API key
+  api_base: "https://api.openai.com/v1"  # API endpoint
+  model: "gpt-4o-mini"         # Model name
+
+attack:
+  retrieval_top_k: 10
+  retrieval_first_k: 20
+  cttft_neighbor_k: 10
+  noise_injection: true
+  dual_injection: true
