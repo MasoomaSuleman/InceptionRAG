@@ -2,6 +2,20 @@
 
 A multi-stage adversarial attack framework targeting Retrieval-Augmented Generation (RAG) systems.
 
+## Quick Start
+
+```bash
+# 1. Install dependencies
+pip install -r requirements.txt
+
+# 2. Configure (copy template and add your API key)
+cp config.yaml.template config.yaml
+# Edit config.yaml with your API credentials
+
+# 3. Run attack with example data
+python -m InceptionRAG.attack_example --config config.yaml --dataset nq --limit 20
+```
+
 ## Overview
 
 InceptionRAG exploits RAG pipelines through a three-stage attack:
