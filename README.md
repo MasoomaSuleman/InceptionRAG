@@ -27,7 +27,7 @@ InceptionRAG exploits RAG pipelines through a three-stage attack:
 InceptionRAG/
 ├── __init__.py                 # Main entry point
 ├── run_attack.py               # Full attack pipeline (with generation)
-├── attack_sample.py            # Quick attack using pre-generated adv/suffix
+├── attack_example.py           # Quick attack using pre-generated example data
 ├── README.md
 ├── requirements.txt
 ├── generation/                 # Stage 1
@@ -80,7 +80,7 @@ InceptionRAG/data/
 │       │   └── msmarco_zoso_results.json
 │       ├── gpt-3-5-turbo/
 │       └── grok-4/
-└── samples/                     # Pre-generated samples for quick testing
+└── example/                     # Pre-generated example data for quick testing
     ├── nq_100_with_ad.json
     ├── hotpotqa_100_with_ad.json
     └── msmarco_100_with_ad.json
@@ -151,27 +151,24 @@ python -m InceptionRAG.scripts.generate_suffix_pool \
 
 ### 2. Quick Attack with Pre-generated Data (Recommended for Testing)
 
-Use `attack_sample.py` to run attacks with pre-generated adversarial samples and ZOSO-optimized suffixes:
+Use `attack_example.py` to run attacks with pre-generated example data and ZOSO-optimized suffixes:
 
 ```bash
-# NQ dataset with Gemini 2.0 Flash
-python InceptionRAG/attack_sample.py \
+# NQ dataset
+python -m InceptionRAG.attack_example \
+    --config InceptionRAG/config.yaml \
     --dataset nq \
-    --batch-size 20 \
-    --limit-batches 1 \
-    --use-existing-adv-only \
-    --success-mode substring
+    --limit 20
 
 # HotpotQA dataset
-python InceptionRAG/attack_sample.py \
+python -m InceptionRAG.attack_example \
+    --config InceptionRAG/config.yaml \
     --dataset hotpotqa \
-    --batch-size 20 \
-    --limit-batches 1 \
-    --use-existing-adv-only
+    --limit 20
 ```
 
 **Features:**
-- Uses pre-generated adversarial samples from `InceptionRAG/data/samples/`
+- Uses pre-generated example data from `InceptionRAG/data/example/`
 - Uses ZOSO-optimized suffixes from `InceptionRAG/data/suffix_pool/zoso_results/{model}/`
 - Supports multiple models: `gemini-2-0-flash`, `gpt-3-5-turbo`, `grok-4`
 - CTTFT cascade attack (L1→L2→L3)
@@ -465,7 +462,7 @@ If you use InceptionRAG in your research, please cite:
 @article{inceptionrag2024,
   title={InceptionRAG: Multi-Stage Adversarial Attack on RAG Systems},
   author={...},
-  year={2024}
+  year={2026}
 }
 ```
 
