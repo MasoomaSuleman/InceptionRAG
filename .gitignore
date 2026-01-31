@@ -1,0 +1,32 @@
+# Large data files (download separately)
+data/corpus/
+data/datasets/
+
+# Generated/cached files
+data/adv/
+data/suffix_pool/zoso_results/
+log/
+results/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment
+.env
+*.log
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Config with secrets (use template)
+config.yaml

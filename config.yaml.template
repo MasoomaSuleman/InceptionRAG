@@ -1,0 +1,53 @@
+# InceptionRAG Configuration Template
+# Copy this file to config.yaml and fill in your API credentials
+
+# =============================================================================
+# LLM API Configuration
+# =============================================================================
+# Supported providers: openai, azure, custom
+# 
+# For OpenAI:
+#   provider: openai
+#   api_key: sk-xxx
+#   model: gpt-4o-mini
+#
+# For Azure OpenAI:
+#   provider: azure
+#   api_key: your-azure-key
+#   api_base: https://your-resource.openai.azure.com/
+#   api_version: 2024-02-15-preview
+#   deployment: your-deployment-name
+#
+# For Custom API (中转站):
+#   provider: custom
+#   api_key: your-key
+#   api_base: https://api.example.com/v1
+#   model: gpt-4o-mini
+
+llm:
+  provider: "openai"           # openai / azure / custom
+  api_key: ""                  # Your API key
+  api_base: ""                 # Optional: custom base URL (leave empty for default OpenAI)
+  api_version: ""              # Azure only: API version
+  deployment: ""               # Azure only: deployment name
+  model: "gpt-4o-mini"         # Model name (ignored for Azure, uses deployment)
+
+# =============================================================================
+# Attack Configuration
+# =============================================================================
+attack:
+  retrieval_top_k: 10          # Final retrieved documents
+  retrieval_first_k: 20        # First-stage retrieval count
+  cttft_neighbor_k: 10         # CTTFT neighbor count
+  noise_injection: true        # Enable polymorphic noise
+  dual_injection: true         # Enable dual-ended injection
+
+# =============================================================================
+# Dataset Configuration
+# =============================================================================
+data:
+  dataset: "nq"                # nq / hotpotqa / msmarco
+  samples_path: ""             # Path to samples JSON (with ad_text)
+  corpus_embs_path: ""         # Path to corpus embeddings .npy
+  corpus_texts_path: ""        # Path to corpus texts .json
+  suffix_pool_path: "data/suffix_pool/suffix_candidates.json"
