@@ -8,11 +8,13 @@ A multi-stage adversarial attack framework targeting Retrieval-Augmented Generat
 # 1. Install dependencies
 pip install -r requirements.txt
 
-# 2. Configure (copy template and add your API key)
-cp config.yaml.template config.yaml
+# 2. Download datasets and build corpus index
+bash scripts/download_all_datasets.sh
+
+# 3. Configure (add your API key)
 # Edit config.yaml with your API credentials
 
-# 3. Run attack with example data
+# 4. Run attack with example data
 python -m InceptionRAG.attack_example --config config.yaml --dataset nq --limit 20
 ```
 
