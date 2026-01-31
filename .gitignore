@@ -4,7 +4,6 @@ data/datasets/
 
 # Generated/cached files
 data/adv/
-data/suffix_pool/zoso_results/
 log/
 results/
 __pycache__/
