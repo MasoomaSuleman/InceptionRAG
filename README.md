@@ -259,16 +259,50 @@ python InceptionRAG/data/build_corpus_index.py \
 
 ### 6. LLM API Configuration
 
-InceptionRAG supports multiple LLM providers:
+InceptionRAG supports multiple LLM providers.
 
-**Option A: Config file (recommended)**
+**Step 1: Create config.yaml**
 
 ```bash
 cp config.yaml.template config.yaml
-# Edit config.yaml with your API credentials
 ```
 
-**Option B: Command line arguments**
+**Step 2: Edit config.yaml with your API credentials**
+
+```yaml
+# config.yaml
+
+# For OpenAI
+llm:
+  provider: "openai"
+  api_key: "sk-xxx"
+  model: "gpt-4o-mini"
+
+# For Custom API (中转站)
+llm:
+  provider: "custom"
+  api_key: "your-key"
+  api_base: "https://api.example.com/v1"
+  model: "gpt-4o-mini"
+
+# For Azure OpenAI
+llm:
+  provider: "azure"
+  api_key: "your-azure-key"
+  api_base: "https://your-resource.openai.azure.com/"
+  api_version: "2024-02-15-preview"
+  deployment: "your-deployment-name"
+
+# Attack parameters (optional, use defaults)
+attack:
+  retrieval_top_k: 10
+  retrieval_first_k: 20
+  cttft_neighbor_k: 10
+  noise_injection: true
+  dual_injection: true
+```
+
+**Alternative: Command line arguments**
 
 ```bash
 # OpenAI
