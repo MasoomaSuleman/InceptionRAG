@@ -129,7 +129,7 @@ This breaks the adversarial logic chain that relies on cross-document dependenci
 
 ```bibtex
 @article{inceptionrag2026,
-  title={InceptionRAG: Multi-Stage Adversarial Attack on RAG Systems},
+  title={InceptionRAG: Stealthy Poisoning Attack Against \\ Retrieval-Augmented Generation},
   author={...},
   year={2026}
 }
