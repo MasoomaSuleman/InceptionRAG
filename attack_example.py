@@ -33,6 +33,8 @@ def main():
     parser.add_argument("--cttft-neighbor-k", type=int, default=10)
     parser.add_argument("--no-noise", action="store_true", help="Disable noise injection")
     parser.add_argument("--no-dual-injection", action="store_true", help="Disable dual-ended injection")
+    parser.add_argument("--hodor", action="store_true", help="Enable HODOR defense (Document-Level Majority Voting)")
+    parser.add_argument("--hodor-model", type=str, default="gemini-2.0-flash", help="Model for HODOR voting")
     args = parser.parse_args()
     
     BASE_DIR = Path(__file__).resolve().parent
@@ -46,6 +48,8 @@ def main():
         cttft_neighbor_k=args.cttft_neighbor_k,
         noise_injection=not args.no_noise,
         dual_injection=not args.no_dual_injection,
+        use_hodor=args.hodor,
+        hodor_model=args.hodor_model,
     )
     
     print("=" * 60)

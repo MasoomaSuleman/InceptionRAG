@@ -91,6 +91,29 @@ data/
 └── example/        # Pre-generated example data
 ```
 
+## HODOR Defense
+
+HODOR (Holistic Document-wise Outcome Reasoning) is a defense mechanism against multi-document poisoning attacks. It isolates each retrieved document and performs independent reasoning, then uses majority voting to determine the final answer.
+
+### Enable HODOR Defense
+
+```bash
+# Attack with HODOR defense enabled
+python -m InceptionRAG.attack_example --config config.yaml --dataset nq --limit 20 --hodor
+
+# Full pipeline with HODOR
+python -m InceptionRAG.run_attack --config config.yaml --dataset nq --hodor --output results.json
+```
+
+### How HODOR Works
+
+1. Each retrieved document is processed independently by the LLM
+2. Each document generates its own answer
+3. Answers are normalized and counted via majority voting
+4. The most common answer is returned as the final response
+
+This breaks the adversarial logic chain that relies on cross-document dependencies.
+
 ## Key Parameters
 
 | Parameter | Default | Description |
@@ -99,6 +122,8 @@ data/
 | `--limit` | 100 | Number of samples |
 | `--attack-only` | False | Skip Stage 1, use existing data |
 | `--skip-attack` | False | Only run Stage 1 |
+| `--hodor` | False | Enable HODOR defense |
+| `--hodor-model` | gemini-2.0-flash | Model for HODOR voting |
 
 ## Citation
 

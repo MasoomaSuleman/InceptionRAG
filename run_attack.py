@@ -64,6 +64,10 @@ class InceptionRAGConfig:
     
     # Skip retrieval (use poisoned docs directly as context)
     skip_retrieval: bool = False
+    
+    # HODOR Defense (Holistic Document-wise Outcome Reasoning)
+    use_hodor: bool = False             # Enable HODOR defense
+    hodor_model: str = "gemini-2.0-flash"  # Model for HODOR voting
 
 
 # ============================================================================
@@ -359,6 +363,37 @@ class InceptionRAGAttacker:
         ans_lower = answer.lower()
         return any(c.lower() in ans_lower for c in candidates)
     
+    def _apply_hodor(self, question: str, context: List[str]) -> str:
+        """
+        Apply HODOR defense (Document-Level Majority Voting).
+        
+        Each document generates an independent answer, then majority vote.
+        """
+        from collections import Counter
+        
+        individual_answers = []
+        
+        for doc in context:
+            try:
+                answer = self.llm.chat(
+                    user_message=f"CONTEXT:\n{doc}\n\nQUESTION: {question}",
+                    system_message="Answer based on context. Output: 'Final answer: <answer>'",
+                    temperature=0.0,
+                    max_tokens=100,
+                )
+                individual_answers.append(answer.strip())
+            except Exception:
+                individual_answers.append("")
+        
+        # Normalize and vote
+        normalized = [a.lower().strip() for a in individual_answers if a.strip()]
+        if not normalized:
+            return "I don't know"
+        
+        vote_counter = Counter(normalized)
+        final_answer, _ = vote_counter.most_common(1)[0]
+        return final_answer
+    
     def _try_attack(
         self, 
         item: dict, 
@@ -378,7 +413,11 @@ class InceptionRAGAttacker:
         random.shuffle(context)
         
         try:
-            answer = self._call_llm(question, context)
+            # Apply HODOR defense if enabled
+            if self.config.use_hodor:
+                answer = self._apply_hodor(question, context)
+            else:
+                answer = self._call_llm(question, context)
             success = self._check_success(answer, item)
             return success, answer, context
         except Exception as e:
@@ -568,6 +607,10 @@ def main():
     parser.add_argument("--zoso-anchor-rounds", type=int, default=50, help="ZOSO anchor optimization rounds")
     parser.add_argument("--zoso-bridge-rounds", type=int, default=50, help="ZOSO bridge optimization rounds")
     parser.add_argument("--zoso-golden-size", type=int, default=40, help="ZOSO golden set size")
+    
+    # HODOR Defense options
+    parser.add_argument("--hodor", action="store_true", help="Enable HODOR defense (Document-Level Majority Voting)")
+    parser.add_argument("--hodor-model", type=str, default="gemini-2.0-flash", help="Model for HODOR voting")
     args = parser.parse_args()
     
     # Build LLM config
@@ -600,6 +643,8 @@ def main():
         cttft_neighbor_k=args.cttft_neighbor_k,
         noise_injection=not args.no_noise,
         dual_injection=not args.no_dual_injection,
+        use_hodor=args.hodor,
+        hodor_model=args.hodor_model,
     )
     
     print("=" * 60)
@@ -607,20 +652,10 @@ def main():
     print("=" * 60)
     print(f"  Model: {llm_config.model}")
     
-    # 显示运行模式
-    if args.attack_only:
-        print(f"  Mode: Attack Only (skip Stage 1)")
-    elif args.zoso_only:
-        print(f"  Mode: ZOSO Only + Attack (skip ADV generation)")
-    elif args.skip_attack:
-        print(f"  Mode: Stage 1 Only (skip Attack)")
-    else:
-        print(f"  Mode: Full Pipeline (Stage 1 + Attack)")
-    
     BASE_DIR = Path(__file__).resolve().parent.parent
     
-    # ========== Stage 1: Generate Logic Traps + ZOSO (default, skip if --attack-only) ==========
-    if not args.attack_only:
+    # ========== Stage 1: Generate Logic Traps + ZOSO (if --stage1 or --zoso-only) ==========
+    if args.stage1 or args.zoso_only:
         print("\n" + "=" * 60)
         print("Stage 1: Generative Manipulation via Optimized Logic Traps")
         print("=" * 60)
@@ -796,8 +831,8 @@ def main():
     print("\n[4/5] Loading suffix pool...")
     suffix_pool = SuffixPool(Path(args.suffix_pool))
     
-    # ========== Stage 1.4: ZOSO Suffix Optimization (default, skip if --attack-only) ==========
-    if not args.attack_only:
+    # ========== Stage 1.4: ZOSO Suffix Optimization (if --stage1 or --zoso-only) ==========
+    if args.stage1 or args.zoso_only:
         print("\n  [Stage 1.4] ZOSO Suffix Optimization...")
         print("  " + "-" * 50)
         
