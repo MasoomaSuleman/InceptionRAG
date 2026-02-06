@@ -820,10 +820,10 @@ def main():
         corpus_texts = json.load(f)
     print(f"  Corpus: {len(corpus_texts)} docs")
     
-    # Load Contriever (use local cache to avoid network issues)
+    # Load Contriever
     print("\n[3/5] Loading Contriever...")
-    contriever_tokenizer = AutoTokenizer.from_pretrained("facebook/contriever", local_files_only=True)
-    contriever = AutoModel.from_pretrained("facebook/contriever", local_files_only=True).eval()
+    contriever_tokenizer = AutoTokenizer.from_pretrained("facebook/contriever")
+    contriever = AutoModel.from_pretrained("facebook/contriever").eval()
     device = "cuda" if torch.cuda.is_available() else "cpu"
     contriever = contriever.to(device)
     print(f"  Device: {device}")
