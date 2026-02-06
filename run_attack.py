@@ -598,6 +598,7 @@ def main():
     parser.add_argument("--no-dual-injection", action="store_true", help="Disable dual-ended injection")
     
     # Pipeline control (默认：完整 pipeline = Stage1 + Stage3)
+    parser.add_argument("--stage1", action="store_true", help="Run Stage 1 (ADV generation + ZOSO)")
     parser.add_argument("--attack-only", action="store_true", help="Skip Stage 1, use existing ADV data and ZOSO results")
     parser.add_argument("--zoso-only", action="store_true", help="Skip ADV generation, only run ZOSO + Stage 3")
     parser.add_argument("--skip-attack", action="store_true", help="Only run Stage 1, skip Stage 3 attack")
@@ -819,10 +820,10 @@ def main():
         corpus_texts = json.load(f)
     print(f"  Corpus: {len(corpus_texts)} docs")
     
-    # Load Contriever
+    # Load Contriever (use local cache to avoid network issues)
     print("\n[3/5] Loading Contriever...")
-    contriever_tokenizer = AutoTokenizer.from_pretrained("facebook/contriever")
-    contriever = AutoModel.from_pretrained("facebook/contriever").eval()
+    contriever_tokenizer = AutoTokenizer.from_pretrained("facebook/contriever", local_files_only=True)
+    contriever = AutoModel.from_pretrained("facebook/contriever", local_files_only=True).eval()
     device = "cuda" if torch.cuda.is_available() else "cpu"
     contriever = contriever.to(device)
     print(f"  Device: {device}")
