@@ -59,6 +59,7 @@ class ZOSOConfig:
     neighbor_k: int = 10                # Number of neighbors to search
     learning_rate: float = 0.05         # Gradient step size
     init_exploration: int = 20          # Initial exploration samples (K-Means clusters)
+    validate_on_test: bool = True       # Whether to validate best suffixes on test set
     
     # Embedding parameters
     embedding_dim: int = 768
@@ -759,9 +760,11 @@ class ZOSOOptimizer:
         
         elapsed = time.time() - start_time
         
-        # Validate on test set
-        print("\n>>> Final Validation on Test Set...")
-        test_reward, test_details = self._validate_on_test()
+        test_reward = None
+        test_details = None
+        if self.config.validate_on_test:
+            print("\n>>> Final Validation on Test Set...")
+            test_reward, test_details = self._validate_on_test()
         
         # Results
         print("\n" + "=" * 60)
@@ -771,8 +774,11 @@ class ZOSOOptimizer:
         print(f"Best Anchor: {self.pool.anchors[self.best_anchor_idx][:60]}...")
         print(f"Best Bridge: {self.pool.bridges[self.best_bridge_idx][:60]}...")
         print(f"Golden Set Reward: {self.best_reward:.2f}")
-        print(f"Test Set Reward: {test_reward:.2f}")
-        print(f"Test Details: {test_details}")
+        if self.config.validate_on_test:
+            print(f"Test Set Reward: {test_reward:.2f}")
+            print(f"Test Details: {test_details}")
+        else:
+            print("Test validation: skipped")
         
         return {
             "best": {
@@ -789,6 +795,7 @@ class ZOSOOptimizer:
                 "bridge_rounds": self.config.bridge_rounds,
                 "init_exploration": self.config.init_exploration,
                 "golden_set_size": self.config.golden_set_size,
+                "validate_on_test": self.config.validate_on_test,
             },
             "golden_indices": self.data_mgr.golden_indices,
             "elapsed_seconds": elapsed,
@@ -945,6 +952,8 @@ def main():
     parser.add_argument("--anchor-rounds", type=int, default=50, help="Anchor optimization rounds")
     parser.add_argument("--bridge-rounds", type=int, default=50, help="Bridge optimization rounds")
     parser.add_argument("--golden-size", type=int, default=40, help="Golden set size")
+    parser.add_argument("--init-exploration", type=int, default=20, help="Initial exploration samples")
+    parser.add_argument("--skip-test-validation", action="store_true", help="Skip final validation on test set")
     parser.add_argument("--retrieval-top-k", type=int, default=10, help="Final retrieval top-k")
     parser.add_argument("--retrieval-first-k", type=int, default=20, help="First stage retrieval count")
     args = parser.parse_args()
@@ -956,6 +965,8 @@ def main():
         model_name=args.model,
         anchor_rounds=args.anchor_rounds,
         bridge_rounds=args.bridge_rounds,
+        init_exploration=args.init_exploration,
+        validate_on_test=not args.skip_test_validation,
         golden_set_size=args.golden_size,
         retrieval_top_k=args.retrieval_top_k,
         retrieval_first_k=args.retrieval_first_k,
