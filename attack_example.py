@@ -2,8 +2,8 @@
 """
 InceptionRAG - Attack Example
 
-使用预生成的 example 数据和 suffix_pool 直接进行攻击测试
-不需要运行完整 pipeline，直接测试攻击效果
+Use pre-generated example data and suffix_pool to run attack evaluation directly.
+No need to run the full pipeline for quick attack validation.
 
 Usage:
     python -m InceptionRAG.attack_example --config config.yaml --dataset nq --limit 10
@@ -61,7 +61,7 @@ def main():
     ds = args.dataset.lower()
     model_folder = llm_config.model.replace(".", "-").replace(" ", "-")
     
-    # Paths (使用 data/example/ 和 data/suffix_pool/)
+    # Paths (using data/example/ and data/suffix_pool/)
     example_path = BASE_DIR / f"data/example/{ds}_100_with_ad.json"
     suffix_pool_path = BASE_DIR / "data/suffix_pool/suffix_candidates.json"
     zoso_results_path = BASE_DIR / f"data/suffix_pool/zoso_results/{model_folder}/{ds}_zoso_results.json"

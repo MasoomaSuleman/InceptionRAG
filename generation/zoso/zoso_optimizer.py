@@ -74,9 +74,9 @@ class ZOSOConfig:
     default_bridge: str = "[Logic: A equals B]"
     
     # Retrieval parameters
-    use_retrieval: bool = True          # 是否使用检索 (True = 两阶段检索)
-    retrieval_top_k: int = 10           # 最终选 top-k (如: 8 + 2 poisoned)
-    retrieval_first_k: int = 10         # 第一阶段检索数量
+    use_retrieval: bool = True          # Whether to use retrieval (True = two-stage retrieval)
+    retrieval_top_k: int = 10           # Final top-k selection (e.g., 8 clean + 2 poisoned)
+    retrieval_first_k: int = 10         # First-stage retrieval count
     
     # API configuration
     api_base_url: str = "https://api.openai.com/v1"
@@ -582,8 +582,8 @@ class RAGEvaluator:
             virtual_entities.append(ad["proxy_entity"]["text"])
         
         # Build poisoned texts with dual-ended injection
-        # Subject Header (前缀): query 作为主题头
-        # Footer Metadata (后缀): anchor/bridge suffix
+        # Subject Header (prefix): query as the topic header
+        # Footer Metadata (suffix): anchor/bridge suffix
         text1_base = ad.get("attribute_document") or ad.get("text1") or ""
         text2_base = ad.get("bridge_document") or ad.get("text2") or ""
         
@@ -593,13 +593,13 @@ class RAGEvaluator:
         
         poisoned_texts = [t for t in [text1, text2] if t]
         
-        # Retrieval: 检索 top-(k-n) + 直接插入 n 个 poisoned（不 re-rank）
+        # Retrieval: top-(k-n) retrieval + direct insertion of n poisoned docs (no re-rank)
         if self.config.use_retrieval:
             n_poisoned = len(poisoned_texts)
-            n_retrieve = max(1, self.config.retrieval_top_k - n_poisoned)  # 如 10-2=8
+            n_retrieve = max(1, self.config.retrieval_top_k - n_poisoned)  # e.g., 10-2=8
             retrieved_docs = self._retrieve_top_k(question, n_retrieve) + poisoned_texts
         else:
-            # 不使用检索，直接用 poisoned_texts
+            # No retrieval: directly use poisoned_texts
             retrieved_docs = poisoned_texts
         
         # Shuffle context

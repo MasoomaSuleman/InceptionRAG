@@ -137,8 +137,8 @@ def inject_dual_ended(text: str, query: str, config: InceptionRAGConfig) -> str:
     
     Format: {query}\n\n{toxic_content}\n\n---\n(Reference keywords: {keywords})
     
-    - 前缀: 完整 query (提高语义相似度)
-    - 后缀: 提取的关键词 (元数据伪造)
+    - Prefix: full query (improves semantic similarity)
+    - Suffix: extracted keywords (metadata spoofing)
     """
     if not config.dual_injection:
         return text
@@ -147,7 +147,7 @@ def inject_dual_ended(text: str, query: str, config: InceptionRAGConfig) -> str:
     template = random.choice(RETRIEVAL_TEMPLATES)
     footer = template.format(keywords=keywords)
     
-    # 完全对齐 main_attack.py: query前缀 + 原文 + 分隔符 + 关键词后缀
+    # Fully aligned with main_attack.py: query prefix + original text + separator + keyword suffix
     return f"{query}\n\n{text}{config.footer_separator}{footer}"
 
 
@@ -447,7 +447,7 @@ class InceptionRAGAttacker:
             "queries": 0,
         }
         
-        # 打印 target answer
+        # Print target answer
         print(f"    Target: {target[:60]}..." if len(target) > 60 else f"    Target: {target}")
         
         # ========== L1: Global Probe ==========
@@ -601,7 +601,7 @@ def main():
     parser.add_argument("--no-noise", action="store_true", help="Disable noise injection")
     parser.add_argument("--no-dual-injection", action="store_true", help="Disable dual-ended injection")
     
-    # Pipeline control (默认：完整 pipeline = Stage1 + Stage3)
+    # Pipeline control (default: full pipeline = Stage1 + Stage3)
     parser.add_argument("--stage1", action="store_true", help="Run Stage 1 (ADV generation + ZOSO)")
     parser.add_argument("--attack-only", action="store_true", help="Skip Stage 1, use existing ADV data and ZOSO results")
     parser.add_argument("--zoso-only", action="store_true", help="Skip ADV generation, only run ZOSO + Stage 3")
@@ -665,20 +665,20 @@ def main():
         print("Stage 1: Generative Manipulation via Optimized Logic Traps")
         print("=" * 60)
         
-        # --zoso-only: 跳过 ADV 生成，使用现有数据
+        # --zoso-only: skip ADV generation and use existing data
         if args.zoso_only:
             print("\n  [--zoso-only] Skipping ADV generation, using existing data...")
-            # 直接跳到数据加载部分
+            # Directly proceed to the data-loading stage
         else:
             from .generation.logic_trap import LogicTrapGenerator
         
-        # Determine input file (使用 InceptionRAG/data/ 下的数据)
+        # Determine input file (using data under InceptionRAG/data/)
         if not args.zoso_only:
             if args.input_queries:
                 input_path = Path(args.input_queries)
             elif args.dataset:
                 ds = args.dataset.lower()
-                # 数据源优先级: InceptionRAG/data/datasets/{ds}/queries.jsonl
+                # Data source priority: InceptionRAG/data/datasets/{ds}/queries.jsonl
                 raw_queries = BASE_DIR / f"InceptionRAG/data/datasets/{ds}/queries.jsonl"
                 
                 if not raw_queries.exists():
@@ -709,7 +709,7 @@ def main():
             
             print(f"  Loaded: {len(raw_items)} queries")
             
-            # 检查是否需要生成 incorrect answer
+            # Check whether incorrect answers need to be generated
             needs_incorrect_answer = not raw_items[0].get("incorrect answer") and not raw_items[0].get("target_answer")
             
             # Prepare items for generation
@@ -720,7 +720,7 @@ def main():
                 question = item.get("question") or item.get("text", "")
                 target = item.get("incorrect answer") or item.get("target_answer", "")
                 
-                # 如果没有 incorrect answer，使用 LLM 生成
+                # If incorrect answer is missing, generate one with LLM
                 if not target and needs_incorrect_answer:
                     if i == 0:
                         print(f"\n  [Stage 1.2] Generating incorrect answers...")
@@ -755,7 +755,7 @@ def main():
             if args.dataset:
                 ds = args.dataset.lower()
                 limit = args.limit or 100
-                # 按 100 个一个 batch 计算范围
+                # Compute range in batches of 100
                 start_idx = 0
                 end_idx = limit
                 gen_output = BASE_DIR / f"InceptionRAG/data/adv/{ds}/{ds}_{start_idx}-{end_idx}_with_ad.json"
@@ -771,15 +771,15 @@ def main():
             # Update args.data to use generated file
             args.data = str(gen_output)
     
-    # Auto-resolve paths if --dataset is specified (全部使用 InceptionRAG/data/)
+    # Auto-resolve paths if --dataset is specified (all from InceptionRAG/data/)
     if args.dataset:
         ds = args.dataset.lower()
         model_folder = llm_config.model.replace(".", "-").replace(" ", "-")
         limit = args.limit or 100
         
-        # 数据路径 (使用 InceptionRAG/data/)
+        # Data paths (using InceptionRAG/data/)
         if not args.data:
-            # 优先使用刚生成的 adv 数据
+            # Prioritize newly generated ADV data
             adv_data = BASE_DIR / f"InceptionRAG/data/adv/{ds}/{ds}_0-{limit}_with_ad.json"
             if adv_data.exists():
                 args.data = str(adv_data)
@@ -796,7 +796,7 @@ def main():
             if zoso_path.exists():
                 args.zoso_results = str(zoso_path)
         
-        # Corpus cache (使用 InceptionRAG/data/corpus/)
+        # Corpus cache (using InceptionRAG/data/corpus/)
         if not args.corpus_embs:
             args.corpus_embs = str(BASE_DIR / f"InceptionRAG/data/corpus/{ds}_contriever_embs.npy")
         if not args.corpus_texts:

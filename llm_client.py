@@ -4,7 +4,7 @@ InceptionRAG - LLM Client Abstraction
 Supports multiple API providers:
 - OpenAI (default)
 - Azure OpenAI
-- Custom API endpoints (中转站)
+- Custom API endpoints (proxy/relay services)
 
 Usage:
     from llm_client import create_llm_client, LLMConfig
@@ -25,7 +25,7 @@ Usage:
         deployment="your-deployment"
     ))
     
-    # Custom API (中转站)
+    # Custom API (proxy/relay services)
     client = create_llm_client(LLMConfig(
         provider="custom",
         api_key="your-key",
@@ -107,7 +107,7 @@ class LLMClient:
         
         kwargs = {"api_key": self.config.api_key}
         
-        # Custom base URL (for 中转站 or other providers)
+        # Custom base URL (for proxy/relay or other providers)
         if self.config.api_base:
             kwargs["base_url"] = self.config.api_base
         

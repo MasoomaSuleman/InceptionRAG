@@ -18,7 +18,7 @@
 #   api_version: 2024-02-15-preview
 #   deployment: your-deployment-name
 #
-# For Custom API (中转站):
+# For Custom API (proxy/relay service):
 #   provider: custom
 #   api_key: your-key
 #   api_base: https://api.example.com/v1
