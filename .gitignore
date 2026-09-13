@@ -23,6 +23,7 @@ build/
 # Environment
 .env
 *.log
+config_gpt55.yaml
 
 # Jupyter
 .ipynb_checkpoints/

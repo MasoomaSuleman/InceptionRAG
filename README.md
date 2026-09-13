@@ -1,5 +1,11 @@
 # InceptionRAG
 
+> **Accepted by the ACM Conference on Computer and Communications Security (ACM CCS 2026).**
+
+**Authors:** Jiachang Zhang (Zhejiang University), Min Chen (Vrije Universiteit Amsterdam), Xiao Ren (Zhejiang University), Zhenyong Zhang (Guizhou University), Yuanchao Shu (Zhejiang University), Yunjun Gao (Zhejiang University), and Zhikun Zhang* (Zhejiang University).
+
+\* Corresponding author.
+
 A multi-stage adversarial attack framework targeting Retrieval-Augmented Generation (RAG) systems.
 
 ## Quick Start
@@ -128,9 +134,10 @@ This breaks the adversarial logic chain that relies on cross-document dependenci
 ## Citation
 
 ```bibtex
-@article{inceptionrag2026,
+@inproceedings{zhang2026inceptionrag,
   title={InceptionRAG: Stealthy Poisoning Attack Against Retrieval-Augmented Generation},
-  author={...},
+  author={Zhang, Jiachang and Chen, Min and Ren, Xiao and Zhang, Zhenyong and Shu, Yuanchao and Gao, Yunjun and Zhang, Zhikun},
+  booktitle={ACM Conference on Computer and Communications Security (CCS)},
   year={2026}
 }
 ```
