@@ -1,5 +1,5 @@
 """
-HODOR (Holistic Document-wise Outcome Reasoning) Defense
+HODOR (Heterogeneous Orthogonal Documents to Obstruct Reasoning) Defense
 
 A defense mechanism against multi-document poisoning attacks like InceptionRAG.
 By isolating each document and performing independent reasoning, HODOR breaks

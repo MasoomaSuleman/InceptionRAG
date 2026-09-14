@@ -66,7 +66,7 @@ class InceptionRAGConfig:
     # Skip retrieval (use poisoned docs directly as context)
     skip_retrieval: bool = False
     
-    # HODOR Defense (Holistic Document-wise Outcome Reasoning)
+    # HODOR Defense (Heterogeneous Orthogonal Documents to Obstruct Reasoning)
     use_hodor: bool = False             # Enable HODOR defense
     hodor_model: str = "gemini-2.0-flash"  # Model for HODOR voting
 

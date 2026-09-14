@@ -1,7 +1,7 @@
 """
 InceptionRAG Defense Module
 
-HODOR (Holistic Document-wise Outcome Reasoning):
+HODOR (Heterogeneous Orthogonal Documents to Obstruct Reasoning):
 A defense mechanism against multi-document poisoning attacks.
 """
 

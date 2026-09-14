@@ -99,7 +99,7 @@ data/
 
 ## HODOR Defense
 
-HODOR (Holistic Document-wise Outcome Reasoning) is a defense mechanism against multi-document poisoning attacks. It isolates each retrieved document and performs independent reasoning, then uses majority voting to determine the final answer.
+HODOR (Heterogeneous Orthogonal Documents to Obstruct Reasoning) is a defense mechanism against multi-document poisoning attacks. It isolates each retrieved document and performs independent reasoning, then uses majority voting to determine the final answer.
 
 ### Enable HODOR Defense
 
