@@ -11,17 +11,41 @@ A multi-stage adversarial attack framework targeting Retrieval-Augmented Generat
 ## Quick Start
 
 ```bash
-# 1. Install dependencies
-pip install -r requirements.txt
+# 1. Create and activate a virtual environment
+python -m venv .venv
+# Windows PowerShell:
+.venv\Scripts\Activate.ps1
+# Windows Git Bash:
+# source .venv/Scripts/activate
+# macOS/Linux:
+# source .venv/bin/activate
 
-# 2. Download datasets and build corpus index
+# 2. Install dependencies
+python -m pip install -r requirements.txt
+
+# 3. Download datasets and build corpus index
 bash scripts/download_all_datasets.sh
 
-# 3. Configure (add your API key)
+# 4. Configure (add your API key)
 # Edit config.yaml with your API credentials
 
-# 4. Run attack with example data
+# 5. Run attack with example data
 python -m InceptionRAG.attack_example --config config.yaml --dataset nq --limit 20
+```
+
+The shell scripts use `.venv` automatically. To use a venv in another location,
+set `VENV_DIR` before running them. In Git Bash:
+
+```bash
+VENV_DIR=/path/to/your/venv bash scripts/download_all_datasets.sh
+```
+
+On Windows, the `.sh` scripts require Git Bash or WSL. From Git Bash, a venv
+created at `C:\Users\masoo\venvs\inceptionrag` can be selected with:
+
+```bash
+export VENV_DIR="/c/Users/masoo/venvs/inceptionrag"
+bash scripts/download_all_datasets.sh
 ```
 
 ## Overview

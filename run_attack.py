@@ -219,7 +219,7 @@ class SuffixPool:
     def __init__(self, path: Path):
         from sentence_transformers import SentenceTransformer
         
-        with open(path, "r") as f:
+        with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
         
         self.anchors = data.get("anchor_suffixes", [])
@@ -512,7 +512,7 @@ class InceptionRAGAttacker:
         
         # Resume from checkpoint
         if output_path and output_path.exists():
-            with open(output_path, "r") as f:
+            with open(output_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 results = data.get("results", [])
             print(f"Resuming from checkpoint: {len(results)} samples")
@@ -561,7 +561,7 @@ class InceptionRAGAttacker:
             "results": results,
         }
         
-        with open(output_path, "w") as f:
+        with open(output_path, "w", encoding="utf-8") as f:
             json.dump(output, f, indent=2, ensure_ascii=False)
 
 
@@ -698,7 +698,7 @@ def main():
         # Load input (skip if --zoso-only)
         if not args.zoso_only:
             print(f"\n  [Stage 1.1] Loading queries from: {input_path}")
-            with open(input_path, "r") as f:
+            with open(input_path, "r", encoding="utf-8") as f:
                 if input_path.suffix == ".jsonl":
                     raw_items = [json.loads(line) for line in f]
                 else:
@@ -811,7 +811,7 @@ def main():
     
     # Load data
     print("\n[1/5] Loading data...")
-    with open(args.data, "r") as f:
+    with open(args.data, "r", encoding="utf-8") as f:
         all_data = json.load(f)
     if args.limit:
         all_data = all_data[:args.limit]
@@ -820,7 +820,7 @@ def main():
     # Load corpus
     print("\n[2/5] Loading corpus...")
     corpus_embs = np.load(args.corpus_embs)
-    with open(args.corpus_texts, "r") as f:
+    with open(args.corpus_texts, "r", encoding="utf-8") as f:
         corpus_texts = json.load(f)
     print(f"  Corpus: {len(corpus_texts)} docs")
     
@@ -885,7 +885,7 @@ def main():
         else:
             zoso_output = Path(args.output).with_suffix("_zoso.json")
         
-        with open(zoso_output, "w") as f:
+        with open(zoso_output, "w", encoding="utf-8") as f:
             json.dump(zoso_results, f, indent=2, ensure_ascii=False)
         
         print(f"\n  ✓ Stage 1.4 Complete: ZOSO results saved to: {zoso_output}")
@@ -903,7 +903,7 @@ def main():
     optimal_anchor_idx = 0
     optimal_bridge_idx = 0
     if args.zoso_results:
-        with open(args.zoso_results, "r") as f:
+        with open(args.zoso_results, "r", encoding="utf-8") as f:
             zoso = json.load(f)
         optimal_anchor_idx = zoso.get("best", {}).get("anchor_idx", 0)
         optimal_bridge_idx = zoso.get("best", {}).get("bridge_idx", 0)

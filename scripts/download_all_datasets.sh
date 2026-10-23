@@ -4,14 +4,23 @@
 
 set -e
 
-# Activate conda environment
-source ~/miniconda3/etc/profile.d/conda.sh
-conda activate rag_attack
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BASE_DIR="$(dirname "$SCRIPT_DIR")"
 DATA_DIR="$BASE_DIR/data"
 LOG_DIR="$BASE_DIR/log/download"
+VENV_DIR="${VENV_DIR:-$BASE_DIR/.venv}"
+
+if [ -x "$VENV_DIR/Scripts/python.exe" ]; then
+    PYTHON="$VENV_DIR/Scripts/python.exe"
+elif [ -x "$VENV_DIR/bin/python" ]; then
+    PYTHON="$VENV_DIR/bin/python"
+else
+    echo "ERROR: Could not find a Python interpreter in $VENV_DIR"
+    echo "Create the venv first or set VENV_DIR to its location."
+    exit 1
+fi
+
+export VENV_DIR
 
 mkdir -p "$LOG_DIR"
 
@@ -29,7 +38,7 @@ download_dataset() {
     
     echo "[$(date +%H:%M:%S)] Starting $dataset download..."
     
-    python "$DATA_DIR/download_datasets.py" \
+    "$PYTHON" "$DATA_DIR/download_datasets.py" \
         --dataset "$dataset" \
         --output-dir "$DATA_DIR" \
         > "$log_file" 2>&1

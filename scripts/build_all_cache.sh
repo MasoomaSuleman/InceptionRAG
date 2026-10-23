@@ -4,14 +4,21 @@
 
 set -e
 
-# Activate conda environment
-source ~/miniconda3/etc/profile.d/conda.sh
-conda activate rag_attack
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BASE_DIR="$(dirname "$SCRIPT_DIR")"
 DATA_DIR="$BASE_DIR/data"
 LOG_DIR="$BASE_DIR/log/cache"
+VENV_DIR="${VENV_DIR:-$BASE_DIR/.venv}"
+
+if [ -x "$VENV_DIR/Scripts/python.exe" ]; then
+    PYTHON="$VENV_DIR/Scripts/python.exe"
+elif [ -x "$VENV_DIR/bin/python" ]; then
+    PYTHON="$VENV_DIR/bin/python"
+else
+    echo "ERROR: Could not find a Python interpreter in $VENV_DIR"
+    echo "Create the venv first or set VENV_DIR to its location."
+    exit 1
+fi
 
 mkdir -p "$LOG_DIR"
 
@@ -42,7 +49,7 @@ build_cache() {
     
     echo "[$(date +%H:%M:%S)] Starting $dataset cache build (GPU $gpu)..."
     
-    CUDA_VISIBLE_DEVICES=$gpu python "$SCRIPT_DIR/build_corpus_cache.py" \
+    CUDA_VISIBLE_DEVICES=$gpu "$PYTHON" "$SCRIPT_DIR/build_corpus_cache.py" \
         --dataset "$dataset" \
         --data-dir "$DATA_DIR" \
         --device cuda \
@@ -73,7 +80,7 @@ elif [ "$GPU_COUNT" -ge 1 ]; then
     build_cache "msmarco" 0
 else
     echo "No GPU found, using CPU..."
-    python "$SCRIPT_DIR/build_corpus_cache.py" --all --data-dir "$DATA_DIR" --device cpu
+    "$PYTHON" "$SCRIPT_DIR/build_corpus_cache.py" --all --data-dir "$DATA_DIR" --device cpu
     exit 0
 fi
 

@@ -2,27 +2,29 @@
 # Exported from rag_attack environment
 
 # Core
-openai==2.9.0
-numpy==2.1.2
-torch==2.5.1
+openai
+numpy
+torch
 
 # Retrieval
-transformers==4.44.0
-sentence-transformers==2.7.0
-faiss-cpu==1.13.1
+transformers
+sentence-transformers
+faiss-cpu
 
 # Dataset (BEIR)
-beir==2.2.0
-datasets==4.4.1
+beir
+datasets
 
 # Hugging Face
-huggingface-hub==0.36.0
-accelerate==1.12.0
+huggingface-hub
+accelerate
 
 # Optimization
-scikit-learn==1.7.2
+scikit-learn
 
 # Utilities
-tqdm==4.67.1
-pyyaml>=6.0
+tqdm
+pyyaml
 httpx[socks]
+
+requests

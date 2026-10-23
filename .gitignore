@@ -1,6 +1,7 @@
 # Large data files (download separately)
 data/corpus/
 data/datasets/
+data/modified_example
 
 # Generated/cached files
 data/adv/
@@ -13,17 +14,16 @@ __pycache__/
 .eggs/
 dist/
 build/
-
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
-
 # Environment
 .env
 *.log
 config_gpt55.yaml
-
 # Jupyter
 .ipynb_checkpoints/
+config.yaml
+# Local API configuration

@@ -32,6 +32,140 @@ data/
 └── download_datasets.py               # Script to download BEIR datasets
 ```
 
+## HotpotQA Sample Preparation
+
+The following steps prepare the 100-example HotpotQA sample with BEIR query
+metadata, relevant corpus IDs, and the corresponding Wikipedia article text.
+Run these commands from the repository root with the project virtual
+environment active:
+
+```bash
+source venv/Scripts/activate
+```
+
+### 1. Download the HotpotQA BEIR dataset
+
+Download the dataset, including `queries.jsonl`, `qrels/train.tsv`,
+`qrels/test.tsv`, and `corpus.jsonl`:
+
+```bash
+python data/download_datasets.py \
+    --dataset hotpotqa \
+    --output-dir data \
+    --no-encode
+```
+
+The `--no-encode` option skips Contriever embedding generation. The large
+`data/datasets/hotpotqa/corpus.jsonl` file is not needed for the metadata
+mapping step below.
+
+### 2. Start with the 100 adversarial examples
+
+The source sample is:
+
+```text
+data/example/hotpotqa_100_with_ad.json
+```
+
+Each record contains a `question` field. The sample is matched against the
+`text` field in:
+
+```text
+data/datasets/hotpotqa/queries.jsonl
+```
+
+### 3. Add query IDs and true answers
+
+Run [add_query_ids.py](./add_query_ids.py) to match questions exactly. For
+each match, the script adds:
+
+* `query_id`: the BEIR record's `_id`
+* `true_answer`: `metadata.answer` from `queries.jsonl`
+
+Create the modified sample in `data/modified_example/`:
+
+```bash
+python data/add_query_ids.py \
+    --examples data/example/hotpotqa_100_with_ad.json \
+    --queries data/datasets/hotpotqa/queries.jsonl \
+    --qrels data/datasets/hotpotqa/qrels/train.tsv \
+        data/datasets/hotpotqa/qrels/test.tsv \
+    --output data/modified_example/hotpotqa_100_with_ad_with_ids.json
+```
+
+The script validates that every sample question has exactly one matching
+query record. It also accepts `--in-place` when updating an existing output
+file.
+
+### 4. Add relevant corpus IDs
+
+The same command reads both qrels files. For every `query_id`, it collects
+the `corpus-id` values whose qrels score is greater than zero and adds them
+as a list:
+
+```json
+{
+  "query_id": "5ab6d31155429954757d3384",
+  "true_answer": "American",
+  "corpus_ids": [
+    "2921047",
+    "158894"
+  ]
+}
+```
+
+The qrels inputs are:
+
+```text
+data/datasets/hotpotqa/qrels/train.tsv
+data/datasets/hotpotqa/qrels/test.tsv
+```
+
+### 5. Download Wikipedia text for the corpus IDs
+
+Run [download_wikipedia_corpus.py](./download_wikipedia_corpus.py). It uses
+the Wikipedia API with each corpus ID as the page ID and saves plaintext
+articles in one directory per corpus ID:
+
+```bash
+python data/download_wikipedia_corpus.py \
+    --examples data/modified_example/hotpotqa_100_with_ad_with_ids.json \
+    --output-dir data/modified_example/hotpotqa/corpus
+```
+
+The resulting structure is:
+
+```text
+data/modified_example/hotpotqa/
+├── corpus/
+│   ├── 158894/
+│   │   └── text.txt
+│   ├── 2921047/
+│   │   └── text.txt
+│   └── ...
+└── hotpotqa_100_with_ad_with_ids.json
+```
+
+The downloader skips an existing `text.txt`, so the same command can be
+restarted after an interruption. It waits two seconds between requests by
+default and honors Wikipedia's `Retry-After` response for rate-limited
+requests. Use `--delay` to change the pacing or `--overwrite` to download
+existing articles again. Failed downloads are recorded in:
+
+```text
+data/modified_example/hotpotqa/corpus/download_errors.json
+```
+
+To test the workflow with one article before downloading all corpus pages:
+
+```bash
+python data/download_wikipedia_corpus.py \
+    --examples data/modified_example/hotpotqa_100_with_ad_with_ids.json \
+    --output-dir data/modified_example/hotpotqa/corpus \
+    --limit 1 \
+    --delay 0
+```
+
 ## Data Format
 
 ### Adversarial Samples (`samples/*_with_ad.json`)

@@ -28,6 +28,9 @@ def main():
     parser.add_argument("--dataset", type=str, choices=["nq", "hotpotqa", "msmarco"], required=True)
     parser.add_argument("--limit", type=int, default=None, help="Max samples to attack")
     parser.add_argument("--output", type=str, default=None, help="Output results JSON")
+    parser.add_argument("--examples", type=str, default=None, help="Example JSON path")
+    parser.add_argument("--corpus-embs", type=str, default=None, help="Corpus embeddings .npy path")
+    parser.add_argument("--corpus-texts", type=str, default=None, help="Corpus texts .json path")
     parser.add_argument("--retrieval-top-k", type=int, default=10)
     parser.add_argument("--retrieval-first-k", type=int, default=20)
     parser.add_argument("--cttft-neighbor-k", type=int, default=10)
@@ -61,12 +64,24 @@ def main():
     ds = args.dataset.lower()
     model_folder = llm_config.model.replace(".", "-").replace(" ", "-")
     
-    # Paths (using data/example/ and data/suffix_pool/)
-    example_path = BASE_DIR / f"data/example/{ds}_100_with_ad.json"
+    # Paths (using data/example/ and data/suffix_pool/ by default)
+    example_path = (
+        Path(args.examples)
+        if args.examples
+        else BASE_DIR / f"data/example/{ds}_100_with_ad.json"
+    )
     suffix_pool_path = BASE_DIR / "data/suffix_pool/suffix_candidates.json"
     zoso_results_path = BASE_DIR / f"data/suffix_pool/zoso_results/{model_folder}/{ds}_zoso_results.json"
-    corpus_embs_path = BASE_DIR / f"data/corpus/{ds}_contriever_embs.npy"
-    corpus_texts_path = BASE_DIR / f"data/corpus/{ds}_corpus_texts.json"
+    corpus_embs_path = (
+        Path(args.corpus_embs)
+        if args.corpus_embs
+        else BASE_DIR / f"data/corpus/{ds}_contriever_embs.npy"
+    )
+    corpus_texts_path = (
+        Path(args.corpus_texts)
+        if args.corpus_texts
+        else BASE_DIR / f"data/corpus/{ds}_corpus_texts.json"
+    )
     
     # Validate paths
     if not example_path.exists():
@@ -79,7 +94,7 @@ def main():
     
     # Load example data
     print(f"\n[1/5] Loading examples from {example_path}...")
-    with open(example_path, "r") as f:
+    with open(example_path, "r", encoding="utf-8") as f:
         all_data = json.load(f)
     if args.limit:
         all_data = all_data[:args.limit]
@@ -88,7 +103,7 @@ def main():
     # Load corpus
     print(f"\n[2/5] Loading corpus...")
     corpus_embs = np.load(corpus_embs_path)
-    with open(corpus_texts_path, "r") as f:
+    with open(corpus_texts_path, "r", encoding="utf-8") as f:
         corpus_texts = json.load(f)
     print(f"  Corpus: {len(corpus_texts)} docs")
     
@@ -108,7 +123,7 @@ def main():
     optimal_anchor_idx = 0
     optimal_bridge_idx = 0
     if zoso_results_path.exists():
-        with open(zoso_results_path, "r") as f:
+        with open(zoso_results_path, "r", encoding="utf-8") as f:
             zoso = json.load(f)
         optimal_anchor_idx = zoso.get("best", {}).get("anchor_idx", 0)
         optimal_bridge_idx = zoso.get("best", {}).get("bridge_idx", 0)
