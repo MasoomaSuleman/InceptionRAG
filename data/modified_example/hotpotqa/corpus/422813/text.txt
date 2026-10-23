@@ -1,0 +1,169 @@
+Elbert Leander "Burt" Rutan (; born June 17, 1943) is an American retired aerospace engineer and entrepreneur noted for his originality in designing light, strong, unusual-looking, and energy-efficient air and space craft. He designed the record-breaking Voyager, which in 1986 was the first plane to fly around the world without stopping or refueling. He also designed the Virgin Atlantic GlobalFlyer, which in 2006 set the world record for the fastest (342 mph/551 km/h in 67 hours) and longest (25,766 miles/41,466 km) nonstop non-refueled circumnavigation flight in history. In 2004, Rutan's sub-orbital spaceplane design SpaceShipOne became the first privately funded spacecraft to enter the realm of space, winning the Ansari X-Prize that year for achieving the feat twice within a two-week period.
+With his VariEze and Long-EZ designs, which first flew in 1975 and 1979 respectively, Rutan is responsible for helping popularize both the canard configuration and the use of moldless composite construction in the homebuilt aircraft industry, the latter a technique that was adopted in several production and commercial aircraft in the following decades. He is the founder or co-founder of multiple aerospace companies, including the Rutan Aircraft Factory, Scaled Composites, Mojave Aerospace Ventures, and The Spaceship Company.
+Rutan has designed 46 aircraft throughout his career, been included in the Time 100 Most Influential People in the World list for the year 2004, been the co-recipient of both the Collier and National Air and Space Museum trophies on two occasions (each for his accomplishments with Voyager in 1986 and SpaceShipOne in 2004), received six honorary doctoral degrees, and has won over 100 different awards for aerospace design and development. In 1995, he was inducted into the National Aviation Hall of Fame. Rutan has five aircraft on display in the Smithsonian Institution's National Air and Space Museum: the VariEze, Quickie, Voyager, SpaceShipOne, and the Virgin Atlantic GlobalFlyer. He is the younger brother of test pilot and United States Air Force fighter pilot Dick Rutan, who piloted many of Burt's earlier original designs on class record-breaking flights.
+
+
+== Life and career ==
+Burt Rutan was born in 1943 in Estacada, Oregon, near Portland, and raised in Dinuba, California. He was one of three children born to George (a dentist) and Irene Rutan. His sister, Nell Rutan, is a former flight attendant for American Airlines. He displayed an early interest in aircraft design. By the time he was eight years old, Rutan was designing and building model aircraft. His first solo flight piloting an airplane was in an Aeronca Champ in 1959, at age 16. In 1965, he graduated third in his class from the California Polytechnic State University (Cal Poly-San Luis Obispo) with a BS degree in aeronautical engineering.
+From 1965 to 1972, Rutan was a civilian flight test project engineer for the U.S. Air Force at Edwards Air Force Base, working on nine projects including the LTV XC-142 VSTOL transport and spin tests of the McDonnell Douglas F-4 Phantom II fighter.  He left to become Director of Development of the BD-5 aircraft for Bede Aircraft in Newton, Kansas, a position he held until 1974.
+In June 1974, Rutan returned to California to establish the Rutan Aircraft Factory.  In this business he designed and developed prototypes for several aircraft, mostly intended for amateur builders.  His first design, executed while he was still at Bede, was the VariViggen, a two-seat pusher single-engine craft of canard configuration.  The canard would become a feature of many Rutan designs, notably the very popular VariEze and Long-EZ.  He is also known for using exotic and unconventional materials in his designs. He was the first to use moldless composite construction.  According to him, he started his composite work by copying the concept used in the repair of molded European sailplanes. His innovation was the adoption of the method not for repair but to build an aircraft with hotwire wing cores and hand-carved foam for the fuselage box. This method allowed Rutan to build a plane without a mold.
+In April 1982, Rutan founded Scaled Composites, LLC, which has become one of the world's pre-eminent aircraft design and prototyping facilities.  Scaled Composites is headquartered in Mojave, California, at the Mojave Air & Space Port. That same year, Beechcraft contracted Rutan's Scaled Composites to refine the design and build the prototype Beechcraft Starship.
+In 1987, Rutan received the Golden Plate Award of the American Academy of Achievement. In 1988, he was inducted into the International Air & Space Hall of Fame at the San Diego Air & Space Museum and in 1995, the National Aviation Hall of Fame at the National Museum of the United States Air Force in Dayton, Ohio. Rutan was elected a member of the National Academy of Engineering in 1989 for leading the engineering, design, construction, and testing of a series of aircraft, including Voyager. In 2004, after SpaceShipOne flew, he was listed as one of Time magazine's "100 Most Influential People in the World" and as Inc. magazine's "Entrepreneur of the Year". In 2005, he received the NAS Award in Aeronautical Engineering from the National Academy of Sciences. In the same year, he was awarded the Robert J. Collier Trophy, which he also obtained in 1986 for his design and development of the Voyager 15.
+In 2007, Northrop Grumman became the sole owner of Rutan's Scaled Composites.
+
+In a 2010 Big Think interview, Rutan articulated his motivation for developing suborbital spaceflight technology projects with SpaceShipOne and SpaceShipTwo. In it he said, "we can achieve some breakthroughs", making such flight "orders of magnitude safer and orders of magnitude more affordable.  I'm taking this step because I think achieving something that has never existed in manned spaceflight – and that is high volume and public access – I think it is important to do that and to do it as soon as possible."
+He retired from Scaled Composites in April 2011. That same year, he received the Daniel Guggenheim Medal and became recognized as a Living Legend of Aviation, receiving the Bob Hoover Freedom of Flight Award from the Kiddie Hawk Air Academy. In 2012, Rutan spoke on "Innovation and the Space Race" to the World Affairs Council, as recorded on C-Span. Flying magazine ranked him at number 18 on their 2013 list, "51 Heroes of Aviation". Rutan was also a recipient of the prestigious Wright Brothers Memorial Trophy in 2015. In 2021, he received his second eponymous Bob Hoover award with the AOPA's R.A. "Bob" Hoover Trophy, given to "people in the industry who have made major contributions over the course of their careers to key areas within general aviation."
+In 2022, the Mojave Air and Space Port was given the name "Rutan Field" in honor of the Rutan brothers' contributions to the airport, its board stating that the Rutans' aviation achievements "have played a key role in the evolution of the aerospace industry and the success of the Mojave Air & Space Port organization."
+Burt is married to Tonya Rutan and together they have two children.
+
+
+== Aircraft designs ==
+In a 45-year career, many of Rutan's designs have often been quite dissimilar from their predecessors. The Los Angeles Times said of his designs: "His airplanes and spacecraft take on all types of sleek shapes and sizes, looking more like the work of a sculptor than an engineer. In all, Rutan has come up with 367 individual concepts—of which 45 have flown."
+
+
+=== Homebuilt aircraft ===
+VariViggen and VariViggen SP
+
+In 1968, he began building his first design, the VariViggen, which first flew in April 1972. It had the rear wing, forward canard, and pusher configuration design elements which became his trademarks.  In lieu of wind tunnel testing, Rutan developed aerodynamic parameters for the VariViggen using a model rigged atop his station wagon, and measured the forces while driving on empty roads.
+The VariViggen was the Rutan model 27.  A new set of outer wings, with winglets, was later developed by Rutan for the VariViggen, producing the VariViggen SP, Rutan model 32.  The VariViggen was named in honor of the Saab 37 Viggen, a canard-configured fighter jet developed in Sweden.  One VariViggen, built in France and named Micro Star, was powered by two Microturbo TRS-18 jet engines in lieu of the usual piston engine.
+VariEze and Long-EZ
+
+The VariViggen design led to the successful VariEze (pronounced "very easy") homebuilt aircraft designs, in which he pioneered the use of moldless glass-reinforced plastic construction in homebuilts. The prototype, designated Model 31, made its public debut at the 1975 EAA Convention and Fly-In (now called AirVenture) in Oshkosh, Wisconsin. That same year, his brother Dick Rutan set a world distance record in the under-500 kg (1100 lb) class in the VariEze, and these aircraft went on to set other world records in this class.
+They were also the first aircraft to fly with NASA-developed winglets.
+Rutan later revised the VariEze design, providing more volume for fuel and cargo, resulting in the Rutan model 61 Long-EZ, designed to be powered by a Lycoming O-235, although some have used Lycoming O-320s or Lycoming O-360s. The Long-EZ had a range of 2,010 miles (3,230 km), over twice that of the VariEze. The Long-EZ also has a revised wing spar design that is not subject to the 2.5 g positive, 1.5 g negative, maximum load factor limit applied to the VariEze after the discovery of problems with some VariEze wings.
+Quickie
+Rutan was approached by Gene Sheehan and Tom Jewett to develop a single-seat personal sport aircraft. Following a preliminary canard project (model 49), a tandem wing configuration was eventually designed, to be powered by an 18 hp Onan industrial engine. The prototype (Rutan model 54) was built in 1977 and registered as N77Q. After 5 months of testing, Quickie Aircraft marketed the aircraft as the Rutan model 54 Quickie in 1978.
+Two derivatives of the Quickie were subsequently developed, both expanded to include two seats. Quickie Aircraft had Gary LaGare develop the Q2, while Viking Aircraft developed the Viking Dragonfly.
+Solitaire
+The 1982 Sailplane Homebuilders Association (Now the Experimental Soaring Association) opened a competition for a homebuilt, self-launching sailplane.  Rutan designed the model 77 Solitaire for this competition, which it won.  The sailplane was canard-configured, with a retractable engine ahead of the cockpit.
+
+
+=== Research aircraft ===
+Grizzly
+Rutan designed the model 72 Grizzly to investigate the possibility of a STOL canard aircraft. It was retired after testing in 1982.
+Lotus Microlight
+Rutan was approached by Colin Chapman, the founder of Lotus Cars, to design a single-seat ultralight aircraft.  Again, a canard configuration was developed, the Rutan model 91.  Colin Chapman's death in 1982 brought this project to an end, after the aircraft had flown.
+Ames AD-1
+In the 1980s NASA issued a contract to Ames Industrial Company of Bohemia, New York to develop a small, low-cost aircraft to investigate Robert T. Jones's (a NASA researcher at NASA's Ames Research Center) oblique wing concept.  Ames turned to Rutan, who designed a small, fiberglass airframe, powered by two Microturbo TRS-18 jet engines.  This was the Rutan model 35, the Ames AD-1.  After completion of the test program, the AD-1 was retired in 1982 and is now on exhibit in the Hiller Aviation Museum in San Carlos, California.
+ARES
+The Scaled Composites ARES, also called the "Mudfighter", is a full-size flying and shooting prototype of a lightweight low cost aircraft with a similar ground attack and support role as the A-10. The aircraft first flew in 1990.
+Boomerang
+A departure from the canard design was the 1996 Boomerang, perhaps one of the unconventional designer's most unconventional aircraft. The aircraft, the Rutan model 202 Boomerang, is an asymmetric twin-engine tractor configuration aircraft with one engine on the fuselage and another mounted on a pod. A November 1996 Popular Mechanics feature article said it "looks more like a trimotor that lost its right boom and engine".
+BiPod
+The BiPod, Rutan's latest design in association with his company Scaled Composites, is a hybrid flying car.  Announced in July 2011, the twin-pod vehicle has a wingspan of 31 feet 10 inches; with the wings reconfigured (stowed between the pods), the car has a width of 7 feet 11 inches and fits in a single-car garage.  The design has two 450 cc four-cycle engines, one in each pod, which power a pair of generators that in turn power the electric motors used for propulsion.  "Lithium-ion batteries in the nose of each pod will provide power during take off and an emergency backup for landing. With a cruising speed of 100 miles per hour (160 km/h), Scaled says the Model 367 BiPod would have a range of 760 miles (1,220 km)."  The plane can fly at 200 miles per hour (320 km/h) which reduces the range to 530 miles (850 km).  "Out on the road, this roadable aircraft, which carries 18 US gallons (68 L; 15 imp gal) of fuel, is expected to have a driving range of 820 miles. It has a claimed electric-only range of 35 miles." Flight controls are in the right pod, road controls (steering wheel and brakes) in the left.
+
+
+=== Performance aircraft ===
+Amsoil Racer
+The Rutan model 68 Amsoil Racer was a racing aircraft of Quickie configuration, built in 1981. It set several speed records, but crashed at the 1983 Reno Air Races and was unsalvageable.
+Voyager
+
+The Rutan model 76 Voyager was the first airplane to fly nonstop, without refueling around the world.  Piloted by Rutan's brother Dick and Jeana Yeager the airplane made the round the world flight over 9 days in December 1986. Around-the-world flights had been accomplished by military crews using in-flight refueling.
+Burt developed a twin-engined (piston engines, one pusher and one tractor) canard-configured design.  The pusher engine ran continuously, the tractor engine was used for take-off and initial climb to altitude, then was shut down.
+The aircraft was first flown with two Lycoming O-235 engines.  After development work, it was reengined with a Continental O-200 (modified to include liquid cooling) as the pusher engine and a Continental O-240 as the tractor engine.
+As a proving flight the aircraft made a record setting endurance flight off the coast of California.  In December 1986, they took off from Edwards Air Force Base in California and flew around the world (westward) in nine days, fulfilling the aircraft's design goals and setting multiple world absolute flight distance records. The Voyager was retired and now hangs in the Milestones of Flight exhibit in the National Air and Space Museum (NASM) main exhibit hall, with the Wright Flyer, Spirit of St. Louis and Bell X-1.
+Burt and Dick Rutan, along with Yeager, made headlines for their efforts as the Voyager team and received the 1986 Collier Trophy and Presidential Citizens Medal from President Ronald Reagan.
+Catbird
+The Scaled Composites Model 81 Catbird is a five-seat, single-engined pressurized airplane.  The airplane was configured as a three-surface aircraft (canard, main wing, and tail) and first flew in 1988.  After serving as Rutan's personal airplane, it was retired.  The Catbird is notable for winning the CAFE Challenge aircraft efficiency prize in 1993.
+Pond Racer
+The 1991 Pond Racer was an Unlimited Class racing airplane.  Concerned about the dwindling numbers of World War II aircraft, with many being consumed by use as Unlimited Class racers at the Reno Air Races, Bob Pond contracted Rutan and Scaled to design and build an Unlimited Class racer. After design studies, a twin-engined, conventional configured layout was chosen.  The aircraft was powered by two 1,000 hp (750 kW) Electromotive-Nissan VG-30 3-liter GTP piston engines running on methanol.  The aircraft was built and tested before delivery to the customer.  It appeared at the Reno Air Races in 1991, 1992 and 1993.  The aircraft was destroyed in a forced landing crash on September 14, 1993, killing pilot Rick Brickert.
+Proteus
+The Model 281 Proteus is a tandem-wing high-endurance aircraft designed by Rutan and built by Scaled Composites to investigate the use of aircraft as high altitude telecommunications relays. The aircraft's requirements were designed by Angel Technologies and Broadband.com. Its first flights were in 1998. It holds several altitude records, set in 2000.
+GlobalFlyer
+
+On March 3, 2005, the Virgin Atlantic GlobalFlyer, an aircraft similar to the Voyager design but built by Scaled using stiffer materials and a single jet engine, completed the first solo non-stop, non-refueled flight around the world with adventurer Steve Fossett as pilot. Reducing weight was critical to the design, and Rutan is quoted as facetiously telling his staff that when they finish building a part, they must throw it up in the air for a weight test, and "If it comes down, it's too heavy". Between February 7, 2006, and February 11, 2006, Fossett and the GlobalFlyer set a record for the longest flight in history: 41,467.53 km (25,766.73 mi), the third absolute world record set with this aircraft before being flown to the NASM Steven F. Udvar-Hazy Center. The Global Flyer is the sixth aerospace vehicle designed by Rutan in the NASM collection.
+SkiGull
+The SkiGull is an amphibious aircraft that was publicly announced at the 2015 EAA AirVenture gathering, post Rutan's retirement. His most recent design, the aircraft is a two-seat composite/titanium aircraft equipped with a retractable ski undercarriage that can have wheels attached for water, snow or land operations, landing on around 400 feet (120 m) of surface but with a range to cross oceans. It has two electric motors with forward-folding reversible propellers to simplify docking and give optional takeoff power. The SkiGull is being developed and funded privately, and had its first test flight in November 2015.
+
+
+=== Contracted aircraft ===
+Triumph
+The 1988 Scaled Composites Triumph was a twin-engine, business jet prototype designed and built for Beechcraft. The aircraft is a three lifting surface design, with both a small forward wing, and a small conventional horizontal stabilizer in a T-tail configuration.
+Visionair Vantage
+The VisionAire VA-10 Vantage is a prototype single-engined light business-jet (or "very light jet", also known as VLJ) developed by VisionAire Jets Corporation. In 1996 Rutan designed the first prototype, a proof-of-concept aircraft intended to confirm the design's handling, which resulted in several problems and a redesign of the aircraft in 1998.
+V-Jet II
+
+The Williams V-Jet II, which first flew in 1997, was a VLJ designed and built as a test bed and demonstrator aircraft for Williams International's new FJX-1 turbofan engine. It served as the design inspiration for the Eclipse 500, and was retired in 2001.
+Adam M-309
+The Adam M-309 CarbonAero was a technology demonstrator six-seat civil utility aircraft designed by Rutan and built by Scaled Composites in the early 2000s. It developed into the A500, which is produced by Adam Aircraft Industries.
+Stratolaunch
+In 2011, Rutan and Microsoft co-founder Paul Allen announced the Stratolaunch, a space launch carrier aircraft built by Scaled Composites for Allen's Stratolaunch Systems to carry air launch to orbit rockets.
+
+
+== Spacecraft designs ==
+
+SpaceShipOne
+
+Rutan made headlines again in June 2004 with SpaceShipOne, which became the first privately built, flown and funded crewed craft to reach space. The project, named "Tier One" (later known as Tier 1b), was developed and flown by Mojave Aerospace Ventures, which is part-owned by Scaled Composites and was a joint venture between Paul Allen and Rutan, with an estimated development cost of US$25 million (provided entirely by Allen). On October 4, the SpaceShipOne team won the Ansari X Prize of US$10 million, completing two flights within two weeks, flying with the equivalent weight of 3 persons, and doing so while reusing at least 80% of the vehicle hardware. The two flights were piloted by Mike Melville and Brian Binnie respectively. The project team was honored with the 2004 Collier Trophy, awarded by the National Aeronautic Association for "greatest achievement in aeronautics or astronautics in America". The craft embodies Rutan's unique style, and is another of the "icons of flight" displayed in the NASM Milestones of Flight exhibit. As the first privately funded spacecraft, it helped spur the beginning of the global private space race.
+SpaceShipTwo Project
+
+Virgin Galactic—an offshoot of businessman and investor Sir Richard Branson's Virgin Group, and the parent company of Branson and Rutan's 2005 spacecraft manufacturing startup The Spaceship Company—announced that it would begin space tourism flights in 2008 using craft based on the designs of SpaceShipOne. Dubbed SpaceShipTwo, these new craft, also designed by Rutan, are intended to allow six "experience optimized" passengers to glimpse the planet from 70 to 80 miles up in suborbital space.  Production of the first of five planned SpaceShipTwo craft has started, but commercial flights did not begin in 2008 as planned. An explosion at the Scaled Composite factory at the Mojave Spaceport on July 26, 2007, which killed three engineers and seriously injured three others, may have contributed to the delay. They were testing components for SpaceShipTwo, but as of August 2007 Scaled Composites remained dedicated to perfecting the design of SpaceShipTwo. Virgin continues to work on developing SpaceShipTwo, but it has stopped predicting when commercial spaceflights will begin. A further SpaceshipTwo accident on October 31, 2014 (VSS Enterprise tail number: N339SS) resulted in the death of copilot Michael Alsbury and injuries to the pilot.
+Rutan was also working with t/Space in the mid-2000s on the development of an air launched, two-stage-to-orbit, crewed spacecraft. It was intended to have a taxi capacity to carry passengers to the International Space Station. In June 2005, air drop tests of quarter scale mockups verified the practicality of air release and rotation to vertical.
+
+White Knight One and Two
+On July 28, 2008, Richard Branson unveiled Scaled Composites White Knight Two Eve, at the Mojave Spaceport. The jet-powered cargo aircraft is based on SpaceShipOne's successful mothership, White Knight One, which was designed by Rutan and based on Proteus. Flight tests were set to begin in September 2008. The launch customer of White Knight Two is Virgin Galactic, which will have the first 2 units, and exclusive rights to the craft for the first few years. In 2008, Branson predicted that the maiden space voyage would take place within 18 months: "It represents ... the chance for our ever-growing group of future astronauts and other scientists to see our world in a completely new light." Virgin Galactic contracted Rutan to build the mothership and spacecraft.
+
+
+== Retirement and post-retirement work ==
+
+On November 3, 2010, Scaled Composites announced the retirement of Rutan:
+"Burt Rutan, founder of aerospace research firm Scaled Composites in 1982, had announced his plans to retire in April 2011. He currently serves as Scaled's chief technical officer and, following his retirement, Burt will assume the title of founder and chairman emeritus. Burt has worked in California's Antelope Valley for more than 45 years, initially as flight test project engineer for the Air Force and in 1974 he founded the Rutan Aircraft Factory to develop experimental aircraft for homebuilders."
+"Burt is known worldwide as a legendary genius in aircraft design in the aviation world. I am very fortunate and proud to have worked by his side for the past 28 years", says President Douglas B. Shane. "We wish Burt and his wife, Tonya, the very best the future holds for them."
+On April 1, 2011, Rutan retired from Scaled Composites to his home in Coeur d'Alene, Idaho.
+Rutan has continued working out of his home in retirement on various designs since stepping down from Scaled Composites in 2011. That year he said that he was working on one more innovative design.
+In July 2011, this was revealed to be a hybrid flying car, the Model 367 BiPod.
+In January 2012, Rutan was among 16 signatories of a Wall Street Journal op-ed which argued against drastic action on climate change. The op-ed prompted a response signed by 38 climate scientists who criticized the authors for lacking climate science expertise and stated that over 97% of actively publishing climate scientists agree that climate change is real and caused by humans.
+In 2015 he began water and flight testing a prototype of a new amphibious aircraft, the Rutan SkiGull, intended to be capable of flying between Hawaii and California, cruising at 200 mph (320 km/h), taking off or landing in about 400 feet (120 m) on challenging surfaces including rough terrain, seas, grass, snow, or ordinary runways, fueled by ordinary automotive or marine gasoline, and having small electric motors for power assists or emergency landing.
+Rutan also advised on the design of the Paul Allen-funded Stratolaunch space launch carrier since retiring in 2011, which is the world's largest airplane by wingspan, and in 2019 announced that he was working on a new eVTOL.
+
+
+== Awards and accolades (partial list) ==
+Rutan has received numerous awards and honors for aerospace design and development throughout his over 50-year-long career. Below is a list of some of his most notable tributes and accolades.
+
+Experimental Aircraft Association (EAA)'s Dr. August Raspet Memorial Award (1976)
+Presidential Citizens Medal (with Dick Rutan and Jeana Yeager, 1986)
+National Aeronautic Association (NAA)'s Collier Trophy (with crews of Voyager and SpaceShipOne, 1986 and 2004)
+Society of Experimental Test Pilots (SETP)'s James H. Doolittle Award (with Scaled Composites team, 1987 and 2004)
+National Aviation Hall of Fame Inductee (1995)
+EAA's Freedom of Flight Award (1996)
+SETP's Ray E. Tenhoff Award (with Doug Shane, 2003)
+Listed among the Time 100 (2004)
+Inc. Magazine's "Entrepreneur of the Year" (2004)
+The Explorers Club Medal (2005)
+National Space Society (NSS)'s Von Braun Award (2005)
+National Air and Space Museum (NASM) Trophy for Current Achievement (with Paul Allen and SpaceShipOne team, 2005)
+NSS's Robert A. Heinlein Memorial Award (2008)
+Kiddie Hawk Air Academy's Living Legends of Aviation Bob Hoover Freedom of Flight Award (2011)
+Daniel Guggenheim Medal (2011)
+NASM Trophy for Lifetime Achievement (2012)
+Ranked No. 18 in Flying Magazine's "51 Heroes of Aviation" (2013)
+NAA's Wright Brothers Memorial Trophy (2015)
+Aircraft Owners and Pilots Association (AOPA)'s R.A. Bob Hoover Trophy (2021)
+Mojave Air and Space Port is renamed "Rutan Field" (with Dick Rutan, 2022)
+
+
+== See also ==
+Rutan Defiant, homebuilt with twin push-pull engines and 4 seats
+Hugo Junkers, German engineer and aircraft designer, considered the first aerospace airframe materials innovator, with the all-metal J 1 in 1915
+Klapmeier brothers, founders of Cirrus Aircraft, inaugurated major change in production airframe manufacturing, with the all-composite SR20 in 1999
+Paul Poberezny, founder of the Experimental Aircraft Association and EAA Annual Convention & Fly-In, designed and built several homebuilt aircraft
+Black Sky: The Race for Space, a 2005 documentary about Rutan, SpaceShipOne and the Ansari X Prize
+
+
+== References ==
+
+
+== External links ==
+
+Official website 
+Burt Rutan at TED 
+Rutan online biography
+Rutan's profile in the National Aviation Hall of Fame
+Stargazer - online resource on every known Rutan project
+Rutan speech "The real future of space exploration" (TED, February 2006)
+
+
+=== Articles ===
+The Designer: Burt Rutan - Airport Journals (2005)
+The wit and wisdom of Burt Rutan - The Space Review (2011)
+Burt Rutan: Icon of Homebuilding and Space Travel - Aircraft Spruce (2012)

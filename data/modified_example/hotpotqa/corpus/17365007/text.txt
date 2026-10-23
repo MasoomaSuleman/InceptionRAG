@@ -1,0 +1,51 @@
+In cosmology, galaxy filaments are the largest known structures in the universe, consisting of walls of galactic superclusters. These massive, thread-like formations can commonly reach 50 to 80 megaparsecs (160 to 260 megalight-years)—with the largest found to date being Quipu (400 megaparsecs), and possibly the still unconfirmed Hercules–Corona Borealis Great Wall at around 3 gigaparsecs (9.8 Gly) in length—and form the boundaries between voids. Due to the accelerating expansion of the universe, the individual clusters of gravitationally bound galaxies that make up galaxy filaments are moving away from each other at an accelerated rate; in the far future they will dissolve.
+Galaxy filaments form the cosmic web and define the overall structure of the observable universe.
+
+
+== Discovery ==
+Discovery of structures larger than superclusters began in the late 1980s. In 1987, astronomer R. Brent Tully of the University of Hawaii's Institute of Astronomy identified what he called the Pisces–Cetus Supercluster Complex. The CfA2 Great Wall was discovered in 1989, followed by the Sloan Great Wall in 2003.
+In January 2013, researchers led by Roger Clowes of the University of Central Lancashire announced the discovery of a large quasar group, the Huge-LQG, which dwarfs previously discovered galaxy filaments in size. In November 2013, using gamma-ray bursts as reference points, astronomers discovered the Hercules–Corona Borealis Great Wall, an extremely large filament measuring more than 10 billion light-years across.
+
+
+== Filaments ==
+The filament subtype of filaments have roughly similar major and minor axes in cross-section, along the lengthwise axis.
+
+A short filament was proposed by Adi Zitrin and Noah Brosch—detected by identifying an alignment of star-forming galaxies—in the neighborhood of the Milky Way and the Local Group. The proposal of this filament, and of a similar but shorter filament, were the result of a study by McQuinn et al. (2014) based on distance measurements using the TRGB method.
+
+
+=== Galaxy walls ===
+The galaxy wall subtype of filaments have a significantly greater major axis than minor axis in cross-section, along the lengthwise axis.
+
+A "Centaurus Great Wall" (or "Fornax Great Wall" or "Virgo Great Wall") has been proposed, which would include the Fornax Wall as a portion of it (visually created by the Zone of Avoidance) along with the Centaurus Supercluster and the Virgo Supercluster, also known as the Local Supercluster, within which the Milky Way galaxy is located (implying this to be the Local Great Wall).
+A wall was proposed to be the physical embodiment of the Great Attractor, with the Norma Cluster as part of it. It is sometimes referred to as the Great Attractor Wall or Norma Wall. This suggestion was superseded by the proposal of a supercluster, Laniakea, that would encompass the Great Attractor, Virgo Supercluster, Hydra–Centaurus Superclusters.
+A wall was proposed in 2000 to lie at z=1.47 in the vicinity of radio galaxy B3 0003+387.
+A wall was proposed in 2000 to lie at z=0.559 in the northern Hubble Deep Field (HDF North).
+
+
+==== Map of nearest galaxy walls ====
+
+
+=== Large quasar groups ===
+Large quasar groups (LQGs) are some of the largest structures known. They are theorized to be protohyperclusters/proto-supercluster-complexes/galaxy filament precursors.
+
+
+=== Supercluster complex ===
+Pisces–Cetus Supercluster Complex
+
+
+== Maps of large-scale distribution ==
+
+
+== See also ==
+
+
+== References ==
+
+
+== Further reading ==
+Pimbblet, Kevin A. (2005). "Pulling Out Threads from the Cosmic Tapestry: Defining Filaments of Galaxies". Publications of the Astronomical Society of Australia. 22 (2): 136–143. arXiv:astro-ph/0503286. Bibcode:2005PASA...22..136P. doi:10.1071/AS05006. ISSN 1323-3580.
+
+
+== External links ==
+Pictures of the filamentary network
+The Universe Within One Billion Light Years with List of Nearby Superclusters (from the Atlas of the Universe):

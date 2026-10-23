@@ -1,0 +1,56 @@
+The Dresden Files Roleplaying Game is a licensed role-playing game based on The Dresden Files and using the Fate system. It was released in late 2010 in two hardcover volumes: Your Story with the rules information and Our World with setting information, and won numerous awards at all of the Origins Awards, the ENnies, and the Golden Geek Awards.
+
+
+== Game ==
+
+The Dresden Files Roleplaying Game is written as an in-universe artifact: a draft of tabletop role-playing game written by Billy Borden in order to explain to both his werewolf pack and to mortals how the supernatural world works. He hopes that in-universe it will allow him to reveal the weaknesses of supernatural creatures, making the rest of the supernatural world as vulnerable as the publication of Dracula made "Black Court" Vampires.
+Because it is supposedly a draft copy of the game, the book is covered in annotations by Harry Dresden, Bob the talking skull, and Billy Borden and these take the form of highlights, notes in the margin, and post-it notes attached to the pages both as explanations of the rules and as snark between the characters. It is also split into two separate books; "Your Story" containing the rules and setting notes, and "Our World" containing a list of the movers and shakers in the Dresden Files universe as well as statistics for most supernatural creature types in the Dresden Files universe along the lines of a monster manual in Dungeons & Dragons.
+While the game does not specify a city to use (or even to use a city at all), the key world-building example of the game is based around Baltimore, rather than using the main setting of the novels (Chicago). This is both to avoid duplication of information already in the novels and so Harry Dresden and the canon of The Dresden Files need not be an issue for roleplay at the table. 
+
+
+=== Volume One: Your Story ===
+
+The first volume of the core Dresden Files RPG, this book covers "all the rules you need to build characters and tell your own stories in the Dresdenverse". It is a stand alone book and does not require an additional purchase of the Fate Core RPG Rules.
+The Dresden Files Roleplaying Game uses the Fate system; a very narrative system in which each character doesn't just have skills and attributes but aspects; freeform traits that are true and can be made relevant to the narrative for a bonus - or for a penalty and a Plot Point to use later. Fate was chosen over the more popular open gaming d20 system because it makes it easier for characters with very different power levels to work together without one overshadowing the other.  
+The characters are assumed to know each other in advance, and character creation includes inventing a couple of stories in their shared past. The magic system is broken up into immediate Evocation and planned Thaumaturgy, with the casting itself being freeform and the role being to control the magic.
+
+
+=== Volume Two: Our World ===
+The second volume in the core Dresden Files RPG, this book gives "extensive detail on the factions, creatures, foes, and allies of the Dresdenverse". It also includes a section on the Chicago setting used in the Dresden novels.
+
+
+=== Volume Three: The Paranet Papers ===
+The third volume in the core Dresden Files RPG, this book provides information on "four key Dresdenverse times and places: Las Vegas, the Russian Revolution, the Neverglades, and Las Tierras Rojas / the Red Lands". In addition it details rules and setting information for navigating the spirit world known as the Nevernever.
+The magical rules are updated and expanded with new material on soulfire, sponsorship, and thaumaturgy.
+There are new and updated creatures to populate the game and provide possible opposition for players, including demons, archangels, creatures of the Nevernever, and scions.
+Character writeups are updated and new characters are introduced to the Dresdenverse.
+Information for Dresden Files novels is updated through the novel Changes, with hints of Ghost Story. In keeping with these two novels, rather than Harry and Bob, it is Waldo Butters and Karrin Murphy who discuss the contents within the pages along with Will (Billy).
+
+
+=== Dresden Files Accelerated ===
+Published in 2017 using the Fate Accelerated system, Dresden Files Accelerated simplifies the rules and is a standalone game from the rest of the Dresden Files RPG.
+
+
+== History and reception ==
+Jim Butcher, author of The Dresden Files, was an old friend of some of the founders of Evil Hat Productions, and when his agent, Jennifer Jackson, started receiving queries about role-playing game rights to the series, Butcher contacted Evil Hat to create and publish an RPG based on the Dresden Files. Evil Hat brought in Genevieve Cogman to research the six Dresden Files books that had been written by that time in 2004, as well as the ten more that were written by the time Evil Hat put a cap on the game several years later as to what material it would cover. Leonard Balsera became the Lead System Developer on The Dresden Files Roleplaying Game while Chad Underkoffler took on the role of lead setting developer. They also announced in 2006 that they had needed to discard the alpha version of The Dresden Files Roleplaying Game and go right back to the drawing board, and that Spirit of the Century would use the first version of the engine they'd created for The Dresden Files RPG.
+Evil Hat Productions acquired the Dresden Files license in December 2004 and originally intended to launch the game in Summer 2006. Evil Hat started recruiting playtesters for The Dresden Files in late 2007, starting external play-testing in January 2008 and playtesting continued through 2008 and 2009. The game was opened for preorders in April 2010 and released in June, to coincide with Origins 2010. Evil Hat later released lighter version of the Dresden Files RPG called Dresden Files Accelerated in 2017.
+Reception was extremely positive with The Dresden Files winning numerous awards. RPGamer awarded Dresden Files 5/5 in the review: "This a game where every mechanic, every example and the humour oozes of the Dresden Files setting, and even if you aren't a fan, it still delivers a well put together urban fantasy game or an awesome magic system you can hack into your current FATE game. I have no complaints, no constructive criticism, not one ill word for this book. This is my game of the year". The Penny Arcade Report made special note of how the character generation system gave everyone a history together.
+In March 2014, Evil Hat announced a live-action version of the RPG, titled "Dresden Lives"; the game was cancelled during beta testing.
+
+
+== Awards ==
+The Dresden Files Roleplaying Game was received well, winning the following awards:
+
+2010 Golden Geek Awards Best RPG Artwork/Presentation
+2010 Golden Geek RPG of the Year
+2010 Origins Awards - Best Roleplaying Game
+2010 Origins Awards - Best Roleplaying Supplement
+2011 Gold ENnie for Best Game
+2011 Gold ENnie for Best New Game
+2011 Gold ENnie for Best Rules
+2011 Gold ENnie for Best Writing
+2011 Silver ENnie for Best Production Values
+2011 Silver ENnie for Product of the Year
+
+
+== References ==

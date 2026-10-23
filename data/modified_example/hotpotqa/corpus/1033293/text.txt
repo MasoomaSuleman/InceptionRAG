@@ -1,0 +1,49 @@
+The Rutan Model 202 Boomerang is an aircraft designed and built by Burt Rutan, with the first prototype taking flight in 1996. The design was intended to be a multi-engine aircraft that in the event of failure of a single engine would not become dangerously difficult to control due to asymmetric thrust. The result is an asymmetrical aircraft with a very distinct appearance.
+
+
+== Design and development ==
+
+The Boomerang was designed around the specifications of the Beechcraft Baron 58, one of the best known and most numerous twin-engine civilian aircraft. The use of the asymmetrical design allows the Boomerang to fly faster and farther than the Baron using smaller engines, and seating the same number of occupants.
+The Boomerang is powered by two engines, with the right engine producing 10 hp (8 kW) more power than the left one (the engines are in fact the same model, just rated differently). The wings are forward-swept.
+A single prototype was completed in 1996, registered as N24BT. It was operated by Rutan for six years.
+Rutan's Boomerang was restored to flying condition in 2011 and made an appearance at Oshkosh that year as part of the Tribute to Rutan.
+
+
+== Morrow Aircraft Corporation MB-300 ==
+In 1997, avionics entrepreneur Ray Morrow and his son, Neil, founded an air taxi company, Skytaxi. Initially they used Cessna 414s as interim aircraft, but in the long term they planned to use a modified version of Rutan's Boomerang design, which they designated the MB-300, and founded Morrow Aircraft Corporation in order to design and manufacture the MB-300.
+In 1999, Morrow applied to the Federal Aviation Administration (FAA) of the United States for a type certificate for the MB-300, but development was suspended in 2002 before the prototype was completed, and was not resumed.
+
+
+== Specifications (Boomerang) ==
+Data from Air&Space Magazine September 2012General characteristics
+Crew: 1 pilot
+Capacity: 4 passengers (1,000 lb payload cabin)
+Length: 30 ft 8 in (9.35 m)
+Wingspan: 36 ft 8 in (11.2 m)
+Wing area: 102 sq ft (9.48 m2)
+Aspect ratio: 13.2
+Empty weight: 2,359 lb (1,070 kg)
+Max takeoff weight: 4,189 lb (1,900 kg)
+Powerplant: 1 × Lycoming TIO-360-A1B , 200 hp (149 kW)
+Powerplant: 1 × Lycoming TIO-360-C1A6D four-cylinder air-cooled piston engine, 210 hp (157 kW)
+Performance
+
+Maximum speed: 311 mph (530 km/h, 270 kn)
+Cruise speed: 250 mph (402 km/h, 220 kn) at 15,500FT, 47% power (best range)
+Stall speed: 80 mph (130 km/h, 70 kn)
+Range: 2,362 mi (3,801 km, 2,053 nmi) 2,960 miles at 37 percent
+Rate of climb: 1,900 ft/min (9.65 m/s)
+
+
+== See also ==
+Blohm & Voss BV 141 - asymmetric German design of World War II
+
+
+== References ==
+
+
+== External links ==
+
+Official website
+Autopia - Burt Rutan’s Boomerang: Safety Through Asymmetry - July 29, 2011
+SCALED and RAF Manned Research Projects - April 2011

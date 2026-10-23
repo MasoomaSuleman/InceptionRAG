@@ -1,0 +1,31 @@
+Mortal Online is a first-person, open-world, PvP/PvE sandbox MMORPG developed and published by the Swedish indie developer Star Vault. Mortal Online was released on June 9, 2010. The game is inspired by the desire to return to Ultima Online's player-controlled, sandbox-style game design; it's powered by Unreal Engine 3 and features a skill-based, real-time combat system. It was followed by a sequel Mortal Online 2 in 2022.
+
+
+== Gameplay ==
+
+Mortal Online does not have a traditional level/class system, but rather a skill and attribute system similar to the Elder Scrolls series. There are ten different races for the player to choose from, including an orc-human hybrid, five human races, two elf-like races, and two dwarf-like races. In order to experience multiple possible playstyles, players can have up to four characters per account (increased from three in December 2012).
+
+
+== Development ==
+In October 2010, approximately four months after its official release, Mortal Online's game engine was rebuilt, making it possible for its developers to implement better graphics, increase performance and introduce advanced features which were previously not possible on the older engine. In May 2011, the film Playing with Arnold was released, in which Basshunter invited friends and fans to play together.
+In June 2011, the game's first expansion titled "Dawn" was released. It introduced graphical and performance improvements; new features like the need to eat, drink and sleep; health, stamina and mana "reserves", a gene system for mounts, changes to the riding and related mechanics, a task system which allows players to create quests for others to do, a new housing system, character skills, world interactive objects, new pick-able resources including a wide selection of plants, an in-town mail system with cash-on-delivery to ease player trading and an updated game launcher.
+The deployment of Dawn suffered many technical issues, leading to extended server downtime and certain game features being disabled directly after the release. Additions such as the gene system and cooking were initially poorly received by some players, especially when raw food was better than cooked food for in-game purposes. This, combined with early balancing issues, lead to extensive weight loss among player avatars which in turn caused attribute penalties.
+In late August 2012, the game's second expansion titled "The Awakening" was released which promised notable new features like trade brokers, player-written books, revamped GUI, the unveiling of Tindrem, roaming guards of varying ranks, advanced AI for NPCs, illegal items, additional skills and a host of other improvements and fixes. Star Vault advised the community ahead of time that the expansion deployment would suffer from problems, and have released a number of patches post-launch. The expansion introduced a multitude of bugs that affect the game's mechanics, performance and stability.
+In late November 2012, Star Vault began to offer a "Free to Play" option. Restrictions to free-account players include a limitation of 60 (of 100) in all skills, restricted looting and trading of rare objects, and the inability to make use of thieving skills. In addition, new accounts must pay to unlock additional characters slots while legacy accounts retain all characters and character slots they made use of prior to the Free-to-Play change.
+In mid-May 2015 the game’s third expansion titled "Sarducaa" was released and introduced the new continent of Sarducca which more than doubled the land mass, added a variety of new items and armors as well introducing a new "heat system" that caused players stamina and health to be affected by the temperature on the new continent. Up to this point there had been no transitional loading screens between areas within the Myrland continent; however, with the introduction of Sarducca, players would now encounter a bridge ‘connecting’ the two continents together.
+
+
+== Release ==
+The full version launched on June 9, 2010. The Steam version with native Steam client support released on 1 September 2015.
+
+
+== Mortal Online 2 ==
+
+A sequel, Mortal Online 2, was launched on Jan 25, 2022. It was announced in late 2019. The early access version was developed for Unreal Engine 4 and became available on Steam on 23 Nov, 2021. The transition to Unreal Engine 5 was completed with Upgrade 2.0 on November 28, 2023.
+
+
+== References ==
+
+
+== External links ==
+Official Website

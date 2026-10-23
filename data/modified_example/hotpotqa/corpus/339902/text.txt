@@ -1,0 +1,103 @@
+Scouse ( skowss), formally known as Liverpool English or Merseyside English, is an English accent and dialect associated with the city of Liverpool and the surrounding Merseyside area. Scouse is highly distinctive and bears little resemblance to other English accents, primarily due to the port of Liverpool, which saw the arrival of Irish and Welsh immigrants and was a popular stop for Scandinavian sailors.
+People from Liverpool are formally known as Liverpudlians. They are more widely called Scousers, a name derived from lobscouse, a stew that originated from Scandinavia, which was eaten by sailors and locals. Since the 1950s, Liverpool's development has spread its accent into nearby areas such as the towns of Runcorn and Skelmersdale. Variations of Scouse have also been noted within the city: the more recent and widely known accent of the city centre and northern districts is usually described as fast, harsh, and nasal, whilst the older "Beatles-like" accent found in the southern suburbs is typically described as dark, slow, and soft.
+Popular colloquialisms have shown a growing deviation from the Lancashire dialect previously found in Liverpool, as well as the increasing influence of Scouse in the wider area. Scouse is sometimes harsh and difficult to understand; however, it is often ranked first or second on lists of British accents that people perceive as happy and friendly.
+
+
+== Etymology ==
+The word scouse is a shortened form of lobscouse, the origin of which is uncertain. It is related to the Norwegian lapskaus, Swedish lapskojs, Danish labskovs (skipperlabskovs), and the Low German labskaus, and refers to a stew of the same name commonly eaten by sailors. In the 19th century, some people in Liverpool and Bootle ate scouse as it was a cheap dish familiar to the families of seafarers. Media sources call these people "scousers". In The Lancashire Dictionary of Dialect, Tradition and Folklore, Alan Crosby suggests that the word became known nationwide only with the popularity of the BBC sitcom Till Death Us Do Part (1965–1975), which featured a Liverpudlian socialist and a Cockney conservative in a regular argument.
+
+
+== Origins ==
+After the 1700s, Liverpool developed into a major international trading and industrial centre. The city consequently became a melting pot of several accents and dialects as sailors and migrants from different areas (such as Wales and especially Ireland) established themselves in the area. Until the mid-19th century, the dominant local accent was similar to that of neighbouring areas of Lancashire. For instance, the comedian and actor Robb Wilton (1881–1957), despite coming from the Everton district of Liverpool, spoke with a dry Lancashire accent rather than a Scouse accent.
+The influence of immigrants from Ireland (especially Dublin) and Northern Wales, as well as visiting Scandinavian sailors, contributed to a distinctive local Liverpool accent. The first reference to a distinctive Liverpool accent was in 1890. Linguist Gerald Knowles suggested that the accent's nasal quality may have derived from poor public health in the 19th century, by which the prevalence of colds among many people over a long time resulted in a nasal accent coming to be regarded as the norm and copied by newer incomers learning the dialect of the local area.
+
+
+== Academic research ==
+The Victorian phonetician Alexander John Ellis said that Liverpool and Birkenhead "had no dialect proper", as he conceived of dialects as speech that had been passed down through generations from the earliest English speakers. Ellis did research some locations on the Wirral, but these respondents spoke in the traditional Cheshire dialect at the time and not in Scouse. The 1950s Survey of English Dialects recorded traditional Lancastrian dialect from the town of Halewood, finding no trace of Scouse influence. The phonetician John C. Wells wrote that "the Scouse accent might as well not exist" in The Linguistic Atlas of England, which was the Survey's principal output.
+An academic study of Scouse was undertaken by Gerald Knowles at the University of Leeds in 1973. He identified a key problem: that traditional dialect research had focused on developments from a single proto-language, but Scouse (and many other urban dialects) had resulted from interactions between an unknown number of languages.
+
+
+== Phonology ==
+
+The phonemic notation used in this article is based on the set of symbols used by Watson (2007).
+
+
+=== Vowels ===
+
+The square–nurse merger in Scouse renders minimal pairs such as fair-fur, stare-stir and pair-purr homophonous as /feː/, /steː/ and /peː/. The actual realization is variable, but the current mainstream pronunciation is close to [eː], as shown on the vowel chart. Other allophones include [ɛː], [ɪː], [ɘː], [əː] and [ɜː] as well as the rounded [œː] and [ɵː], with all but [ɪː] being more conservative than [eː]. In addition to those, there also exist the diphthongal variants [ɛə] and [əɛ]. Middle class speakers may differentiate SQUARE from NURSE by using the front [ɛː] for the former (so that fair, stare and pair are rendered [fɛː, stɛː, pɛː]) and the central [ɜː] for the latter (so that fur, stir and purr are rendered [fɜː, stɜː, pɜː]), much like in RP.
+As other Northern English varieties, Scouse lacks the foot–strut split, so that words like cut /kʊt/, luck /lʊk/ and up /ʊp/ have the same /ʊ/ phoneme as bull /bʊl/, foot /fʊt/ and put /pʊt/. Speakers attempting to distinguish between the two typically use a stressed /ə/ for the former set: /kət, lək, əp/, resulting in a Welsh English-like strut–schwa merger. However, this often leads to hypercorrection, so that good luck may be pronounced [ˌɡəd ˈɫʊk].
+Words such as grass, path and sample have a short /a/, rather than the long /ɑː/ due to the lack of the trap–bath split: /ɡɹas, pat̪, ˈsampəl/. As with the foot–strut split, an attempt to use /ɑː/ in an RP-like way may lead to hypercorrections such as [ˌbɫɑːk ˈkʰasɫ] (RP [ˌblak ˈkʰɑːsɫ]).
+The words book, cook and look are typically pronounced with the vowel of GOOSE rather than that of FOOT, which is true within other parts of Northern England and the Midlands. This causes minimal pairs such as book and buck, cook and cuck, and look and luck. The use of a long /ʉː/ in such words is more often used in working-class accents; recently, however, this feature has been becoming more recessive, being found less often among younger people.
+The weak vowel merger is in transition, making some instances of unstressed /ɪ/ merge with /ə/, so that eleven /ɪˈlɛvən/ and orange /ˈɒrɪndʒ/ are pronounced [əˈɫɛvən] and [ˈɒɾəndʒ]. The typical g-dropped variant of ing is [ən], which is subject to syllabic consonant formation (as in disputing [dɪsˈpjʉːʔn̩]). As in Geordie, [ɪ] for standard [ə] may also occur, as in maggot [ˈmaɡɪθ̠].
+In final position, /iː, ʉː/ tend to be fronting/backing diphthongs with central onsets [ɨ̞i, ɨ̞u]. Sometimes this also happens before /l/ in words such as school [skɨ̞uɫ].
+The HAPPY vowel is tense [i] and is best analysed as belonging to the /iː/ phoneme.
+There is not a full agreement on the phonetic realisation of /ɑː/:
+According to Watson (2007), it is back [ɑː], with front [aː] being a common realisation for some speakers.
+According to Collins & Mees (2013) and Cruttenden (2014), it is typically front [aː].
+The GOOSE vowel  is typically central [ʉː], and it may be even fronted to [yː] so that it becomes the rounded counterpart of /iː/.
+The NEAR vowel /iɛ/ typically has a front second element [ɛ].
+The FACE vowel /eɪ/ is typically diphthongal [eɪ], rather than being a monophthong [eː] that is commonly found in other Northern English accents.
+The GOAT vowel /ɛʉ/ has a considerable allophonic variation. Its starting point can be open-mid front [ɛ], close-mid front [e] or mid central [ə] (similarly to the NURSE vowel), whereas its ending point varies between fairly close central [ʉ̞] and a more back [ʊ]. The most typical realisation is [ɛʉ̞], but [ɛʊ, eʉ̞, eʊ, əʉ̞] and an RP-like [əʊ] are also possible. John Wells also lists [oʊ] and [ɔʊ], which are more common in Midland English and younger Northern English. To him, variants with central or front onsets sound 'incongruously "posh"' in combination with other broad Scouse vowels.
+The PRICE vowel /aɪ/ can be monophthongised to [äː] in certain environments. According to Wells (1982) and Watson (2007), the diphthongal realisation is quite close to the conservative RP norm ([aɪ]), but according to Collins & Mees (2013) it has a rather back starting point ([ɑɪ]).
+The MOUTH vowel /aʊ/ is [aʊ], close to the RP norm.
+
+
+=== Consonants ===
+H-dropping, as in many other varieties of Northern England English. This renders hear /hiɛ/, high /haɪ/ and hold /hɛʉld/ variably homophonous with ear /iɛ/, eye /aɪ/ and old /ɛʉld/.
+NG-coalescence is not present as with other Northern English accents, for instance realising along as [əˈlɒŋɡ].
+Like many other accents around the world, G-dropping also occurs, with [ən] being the most common realization of the sequence.
+/t/ has several allophones depending on environment:
+Intervocalically (including at word boundaries), it is typically pronounced [ɹ] or [ɾ], which is found in several other Northern English varieties.
+Pre-pausally, it may be debuccalised to [h], with older speakers only doing this in function words with short vowels: it, lot, not, that, what pronounced [ɪh, lɒh, nɒh, d̪ah, wɒh] respectively. On the other hand, younger speakers may further debuccalise in polysyllabic words in unstressed syllables, hence aggregate [ˈaɡɾɪɡɪh]. This is not differentiated from [θ̠] in this article.
+T-glottalisation is rarer than in the rest of England, with [ʔ] occurring before /l/ and syllabic consonants.
+Affrication of /t/ as [ts] word-initially and lenition to [θ̠] intervocalically and word-finally. The latter type of allophony does not lead to a loss of contrast with /s/ as the articulation is different; in addition, /s/ is also longer. For female speakers, the fricative allophone of /t/ is not necessarily [θ̠] but rather a complex sequence [hsh], so that out is pronounced [aʊhsh], rather than [aʊθ̠]. In this article, the difference is not transcribed and ⟨θ̠⟩ is used for the latter two allophones.
+/k/ can turn into an affricate or a fricative, determined mostly by the quality of the preceding vowel. If fricative, a palatal, velar or uvular articulation ([ç, x, χ] respectively) is realised. This is seen distinctively with words like book and clock.
+/p/ can be fricatised to [ɸ], albeit rarely.
+As with other varieties of English, the voiceless plosives /p, t, k/ are aspirated word-initially, except when /s/ precedes in the same syllable. It can also occur word- and utterance-finally, with potential preaspirated pronunciations [ʰp, ʰt, ʰk] (which is often perceived as glottal noise or as oral friction produced in the same environment as the stop) for utterance-final environments, primarily found in female speakers.
+The voiced plosives /b, d, ɡ/ are also fricatised, with /d/ particularly being lenited to the same extent as /t/, although the fricative allophone is frequently devoiced.
+Under Irish influence, the dental stops [t̪, d̪] are often used instead of the standard dental fricatives [θ, ð], leading to a phonemic distinction between dental and alveolar stops. The fricative forms are also found, whereas th-fronting is not as common.
+The accent is non-rhotic, meaning /r/ is not pronounced unless followed by a vowel. When it is pronounced, it is typically realised as a tap [ɾ] between vowels (as in mirror [ˈmɪɾə]) and sometimes in initial clusters as well (as in breath [bɾɛt̪]) and as an approximant [ɹ] otherwise, a variant sometimes also used in lieu of the tap.
+
+
+== International recognition ==
+
+Scouse is highly distinguishable from other English dialects. Because of this international recognition, Keith Szlamp made a request to IANA on 16 September 1996 to make it a recognised Internet dialect. After citing a number of references, the application was accepted on 25 May 2000 and now allows Internet documents that use the dialect to be categorised as Scouse by using the language tag "en-Scouse".
+Scouse has also become well-known globally as the accent of the Beatles. While the members of the band are famously from Liverpool, their accents have more in common with the older Lancashire-like Liverpool dialect found in the southern suburbs; the accent has evolved into Scouse since the 1960s.
+The four Gospels of the New Testament have been published as The Gospels in Scouse. This was translated by Dick Williams and Frank Shaw.
+
+
+== See also ==
+Other northern English dialects include:
+
+Cumbrian (Cumbria)
+Geordie (Newcastle)
+Lanky (Lancashire)
+Mackem (Sunderland)
+Mancunian (Manchester)
+Pitmatic (Durham and Northumberland)
+Tyke (Yorkshire)
+
+
+== Notes ==
+
+
+== References ==
+
+
+== Bibliography ==
+
+
+== Further reading ==
+
+
+== External links ==
+Sounds Familiar: Birkenhead (Scouse) Archived 6 September 2017 at the Wayback Machine — Listen to examples of Scouse and other regional accents and dialects of the UK on the British Library's 'Sounds Familiar' website
+'Hover & Hear' Scouse pronunciations Archived 6 April 2015 at the Wayback Machine, and compare with other accents from the UK and around the world
+Sound map – Accents & dialects Archived 7 September 2017 at the Wayback Machine in Accents & Dialects Archived 14 September 2017 at the Wayback Machine, British Library.
+BBC – Liverpool Local History – Learn to speak Scouse!
+A. B. Z. of Scouse (Lern Yerself Scouse) (ISBN 0-901367-03-6)
+IANA registration form for the en-scouse tag
+IETF RFC 4646 — Tags for Identifying Languages (2006)
+Visit Liverpool — The official tourist board website for Liverpool
+A Scouser in California — A syndicated on-air segment that airs on Bolton FM Radio during Kev Gurney's show (7 pm to 10 pm – Saturdays) and Magic 999 during Roy Basnett's Breakfast (6 am to 10 am – Monday to Friday)
+Clean Air Cleaning Up Old Beatles Accent, ABC News

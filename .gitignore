@@ -1,7 +1,7 @@
 # Large data files (download separately)
 data/corpus/
 data/datasets/
-data/modified_example
+
 
 # Generated/cached files
 data/adv/
