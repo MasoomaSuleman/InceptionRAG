@@ -569,19 +569,50 @@ class InceptionRAGAttacker:
 # CLI Entry Point
 # ============================================================================
 
+def _sanitize_model_dir(model_name: str) -> str:
+    """Normalize a model name into a safe folder name."""
+    sanitized = re.sub(r"[^A-Za-z0-9._-]+", "-", model_name or "default-model").strip("-_.")
+    return sanitized or "default-model"
+
+
+def _resolve_model_output_path(path_str: str, model_name: str, suffix_name: str = "") -> Path:
+    """Place results under results/<model>/ while preserving the file name and suffix."""
+    path = Path(path_str)
+    model_dir = _sanitize_model_dir(model_name)
+
+    if model_dir in path.parts:
+        final_path = path
+    else:
+        final_path = path.parent / model_dir / path.name
+
+    if suffix_name:
+        if final_path.suffix:
+            final_path = final_path.with_name(f"{final_path.stem}{suffix_name}{final_path.suffix}")
+        else:
+            final_path = final_path.with_name(f"{final_path.name}{suffix_name}")
+
+    return final_path
+
+
+def _append_output_suffix(path_str: str, suffix_name: str, model_name: Optional[str] = None) -> Path:
+    """Return a path like 'results.json' -> 'results_suffix.json' inside results/<model>/ if provided."""
+    model_name = model_name or "default-model"
+    return _resolve_model_output_path(path_str, model_name, suffix_name)
+
+
 def main():
     import argparse
     from transformers import AutoModel, AutoTokenizer
     
     parser = argparse.ArgumentParser(description="InceptionRAG Attack Pipeline")
     
-    # LLM API options (supports OpenAI / Azure / Custom)
+    # LLM API options (supports OpenAI / Azure / Custom / HF)
     parser.add_argument("--config", type=str, default=None, help="Path to config.yaml")
     parser.add_argument("--api-key", type=str, default=None, help="API key (OpenAI/Azure/Custom)")
     parser.add_argument("--api-base", type=str, default=None, help="Custom API base URL")
-    parser.add_argument("--api-provider", type=str, default="openai", choices=["openai", "azure", "custom"],
-                        help="API provider: openai, azure, or custom")
-    parser.add_argument("--model", type=str, default="gpt-4o-mini", help="Model name")
+    parser.add_argument("--api-provider", type=str, default=None, choices=["openai", "azure", "custom", "hf"],
+                        help="API provider: openai, azure, custom, or hf (optional override)")
+    parser.add_argument("--model", type=str, default=None, help="Model name (optional override)")
     parser.add_argument("--azure-deployment", type=str, default=None, help="Azure deployment name")
     parser.add_argument("--azure-api-version", type=str, default="2024-02-15-preview", help="Azure API version")
     
@@ -620,25 +651,45 @@ def main():
     
     # Build LLM config
     if args.config:
-        # Load from config file
+        # Load from config file, then overlay only explicit CLI overrides
         llm_config = LLMConfig.from_yaml(args.config)
+        if args.api_key:
+            llm_config.api_key = args.api_key
+        if args.api_base:
+            llm_config.api_base = args.api_base
+        if args.api_provider is not None:
+            llm_config.provider = args.api_provider
+        if args.azure_api_version:
+            llm_config.api_version = args.azure_api_version
+        if args.azure_deployment:
+            llm_config.deployment = args.azure_deployment
+        if args.model is not None:
+            llm_config.model = args.model
     else:
-        # Build from CLI args
+        # Build from CLI args, but keep provider/model default behavior sane when not provided
         if not args.api_key:
             import os
             args.api_key = os.getenv("OPENAI_API_KEY", "")
-            if not args.api_key:
+            if not args.api_key and (args.api_provider != "hf"):
                 print("Error: --api-key required or set OPENAI_API_KEY env var")
                 return
-        
+
         llm_config = LLMConfig(
-            provider=args.api_provider,
-            api_key=args.api_key,
+            provider=args.api_provider or "openai",
+            api_key=args.api_key or "",
             api_base=args.api_base or "",
             api_version=args.azure_api_version,
             deployment=args.azure_deployment or "",
-            model=args.model,
+            model=args.model or "gpt-4o-mini",
         )
+
+    if not llm_config.api_key and llm_config.provider != "hf":
+        import os
+        llm_config.api_key = os.getenv("OPENAI_API_KEY", "") or os.getenv("AZURE_OPENAI_API_KEY", "")
+
+    if llm_config.provider != "hf" and not llm_config.api_key:
+        print("Error: ZOSO optimization requires an OpenAI-compatible API key. Set llm.api_key in config.yaml, pass --api-key, or export OPENAI_API_KEY.")
+        return
     
     # Full config
     config = InceptionRAGConfig(
@@ -760,7 +811,7 @@ def main():
                 end_idx = limit
                 gen_output = BASE_DIR / f"InceptionRAG/data/adv/{ds}/{ds}_{start_idx}-{end_idx}_with_ad.json"
             else:
-                gen_output = Path(args.output).with_suffix("_with_ad.json")
+                gen_output = _append_output_suffix(args.output, "_with_ad", llm_config.model)
             
             gen_output.parent.mkdir(parents=True, exist_ok=True)
             results = generator.generate_batch(gen_items, gen_output)
@@ -848,7 +899,7 @@ def main():
         # ZOSO config
         zoso_config = ZOSOConfig(
             api_key=llm_config.api_key,
-            api_base_url=llm_config.api_base or "https://api.openai.com/v1",
+            api_base_url=llm_config.api_base or ("https://api.openai.com/v1" if llm_config.provider != "hf" else ""),
             model_name=llm_config.model,
             anchor_rounds=args.zoso_anchor_rounds,
             bridge_rounds=args.zoso_bridge_rounds,
@@ -864,8 +915,12 @@ def main():
         # Initialize ZOSO components
         embedder = SentenceTransformer('all-mpnet-base-v2')
         zoso_pool = ZOSOSuffixPool.from_file(Path(args.suffix_pool), embedder)
-        
-        client = OpenAI(base_url=zoso_config.api_base_url, api_key=zoso_config.api_key)
+
+        if llm_config.provider != "hf" and not llm_config.api_key:
+            print("Error: ZOSO requires an OpenAI-compatible API key. Set llm.api_key in config.yaml or pass --api-key / OPENAI_API_KEY.")
+            return
+
+        client = create_llm_client(llm_config) if llm_config.provider == "hf" else OpenAI(base_url=zoso_config.api_base_url, api_key=zoso_config.api_key)
         data_mgr = DataManager(all_data, zoso_config, client)
         
         # Run optimization
@@ -883,7 +938,7 @@ def main():
             zoso_output = BASE_DIR / f"InceptionRAG/data/suffix_pool/zoso_results/{model_folder}/{ds}_zoso_results.json"
             zoso_output.parent.mkdir(parents=True, exist_ok=True)
         else:
-            zoso_output = Path(args.output).with_suffix("_zoso.json")
+            zoso_output = _append_output_suffix(args.output, "_zoso", llm_config.model)
         
         with open(zoso_output, "w") as f:
             json.dump(zoso_results, f, indent=2, ensure_ascii=False)
@@ -927,7 +982,7 @@ def main():
     print("Stage 3: Attack with CTTFT")
     print("=" * 60)
     
-    output_path = Path(args.output)
+    output_path = _resolve_model_output_path(args.output, llm_config.model)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     
     results = attacker.attack_batch(all_data, output_path)

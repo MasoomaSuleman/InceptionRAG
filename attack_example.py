@@ -19,7 +19,7 @@ import torch
 from transformers import AutoTokenizer, AutoModel
 
 from .llm_client import LLMConfig, create_llm_client
-from .run_attack import SuffixPool, TwoStageRetriever, InceptionRAGAttacker, InceptionRAGConfig
+from .run_attack import SuffixPool, TwoStageRetriever, InceptionRAGAttacker, InceptionRAGConfig, _resolve_model_output_path
 
 
 def main():
@@ -126,7 +126,7 @@ def main():
     print("Running Attack")
     print("=" * 60)
     
-    output_path = Path(args.output) if args.output else None
+    output_path = _resolve_model_output_path(args.output, llm_config.model) if args.output else None
     if output_path:
         output_path.parent.mkdir(parents=True, exist_ok=True)
     

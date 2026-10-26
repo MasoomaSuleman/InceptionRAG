@@ -43,11 +43,9 @@ from .retrieval import (
 )
 
 # Stage 3: Full Attack (CTTFT + Polymorphic)
-from .run_attack import (
-    InceptionRAGConfig,
-    InceptionRAGAttacker,
-    inject_polymorphic_noise,
-)
+# Import lazily to avoid warnings when running `python -m InceptionRAG.run_attack`.
+# The module is executed as a package submodule, so eager import here can
+# re-import the same file before runpy has finished setting up the package.
 
 __all__ = [
     # LLM Client

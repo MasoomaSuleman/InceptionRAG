@@ -548,8 +548,8 @@ def main():
     # LLM API options (supports OpenAI / Azure / Custom)
     parser.add_argument("--api-key", type=str, default=None, help="API key")
     parser.add_argument("--api-base", type=str, default=None, help="Custom API base URL")
-    parser.add_argument("--api-provider", type=str, default="openai", choices=["openai", "azure", "custom"])
-    parser.add_argument("--model", type=str, default="gpt-4o-mini", help="Model name")
+    parser.add_argument("--api-provider", type=str, default=None, choices=["openai", "azure", "custom", "hf"], help="Optional provider override")
+    parser.add_argument("--model", type=str, default=None, help="Optional model override")
     parser.add_argument("--azure-deployment", type=str, default=None, help="Azure deployment name")
     parser.add_argument("--azure-api-version", type=str, default="2024-02-15-preview")
     # Data options
@@ -561,17 +561,17 @@ def main():
     # Build LLM config
     import os
     api_key = args.api_key or os.getenv("OPENAI_API_KEY", "")
-    if not api_key:
+    if args.api_provider != "hf" and not api_key:
         print("Error: --api-key required or set OPENAI_API_KEY env var")
         return
-    
+
     llm_config = LLMConfig(
-        provider=args.api_provider,
+        provider=args.api_provider or "openai",
         api_key=api_key,
         api_base=args.api_base or "",
         api_version=args.azure_api_version,
         deployment=args.azure_deployment or "",
-        model=args.model,
+        model=args.model or "gpt-4o-mini",
     )
     
     # Load input

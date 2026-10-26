@@ -47,7 +47,7 @@ from typing import Optional, List, Dict, Any
 @dataclass
 class LLMConfig:
     """LLM API Configuration"""
-    provider: str = "openai"           # openai / azure / custom
+    provider: str = "openai"           # openai / azure / custom / hf
     api_key: str = ""
     api_base: str = ""                 # Custom base URL
     api_version: str = ""              # Azure only
@@ -97,10 +97,58 @@ class LLMClient:
         """Initialize the appropriate client based on provider"""
         if self.config.provider == "azure":
             self._init_azure()
+        elif self.config.provider == "hf":
+            self._init_hf()
         else:
             # OpenAI or Custom (both use OpenAI client)
             self._init_openai()
-    
+
+    def _init_hf(self):
+        """Initialize a local Hugging Face generation model."""
+        import torch
+        from transformers import AutoTokenizer, AutoModelForCausalLM
+
+        model_name = self.config.model or "Qwen/Qwen2.5-7B-Instruct"
+        self._tokenizer = AutoTokenizer.from_pretrained(model_name)
+        if self._tokenizer.pad_token is None:
+            self._tokenizer.pad_token = self._tokenizer.eos_token
+
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        torch_dtype = torch.bfloat16 if device == "cuda" else torch.float32
+
+        try:
+            if device == "cuda":
+                self._model = AutoModelForCausalLM.from_pretrained(
+                    model_name,
+                    torch_dtype=torch_dtype,
+                    device_map="auto",
+                    low_cpu_mem_usage=True,
+                )
+            else:
+                self._model = AutoModelForCausalLM.from_pretrained(
+                    model_name,
+                    torch_dtype=torch_dtype,
+                    device_map=None,
+                    low_cpu_mem_usage=True,
+                )
+                self._model = self._model.to(device)
+        except RuntimeError as e:
+            if device == "cuda" and "out of memory" in str(e).lower():
+                print("[Warning] CUDA OOM while loading local HF model; retrying on CPU.")
+                self._model = AutoModelForCausalLM.from_pretrained(
+                    model_name,
+                    torch_dtype=torch.float32,
+                    device_map=None,
+                    low_cpu_mem_usage=True,
+                )
+                self._model = self._model.to("cpu")
+                device = "cpu"
+            else:
+                raise
+
+        self._model.eval()
+        self._device = torch.device(device)
+
     def _init_openai(self):
         """Initialize OpenAI or Custom API client"""
         from openai import OpenAI
@@ -145,6 +193,9 @@ class LLMClient:
         Returns:
             Response text
         """
+        if self.config.provider == "hf":
+            return self._chat_hf(user_message, system_message, temperature, max_tokens)
+
         response = self._client.chat.completions.create(
             model=self._model,
             messages=[
@@ -155,6 +206,64 @@ class LLMClient:
             max_tokens=max_tokens if max_tokens is not None else self.config.max_tokens,
         )
         return response.choices[0].message.content or ""
+
+    def _chat_hf(
+        self,
+        user_message: str,
+        system_message: str = "You are a helpful assistant.",
+        temperature: float = None,
+        max_tokens: int = None,
+    ) -> str:
+        """Generate a response with a local Hugging Face model."""
+        import torch
+
+        messages = [
+            {"role": "system", "content": system_message},
+            {"role": "user", "content": user_message},
+        ]
+
+        prompt = self._tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True,
+        )
+        inputs = self._tokenizer(prompt, return_tensors="pt")
+        inputs = {k: v.to(self._device) for k, v in inputs.items()}
+
+        gen_temperature = temperature if temperature is not None else self.config.temperature
+        gen_max_tokens = max_tokens if max_tokens is not None else self.config.max_tokens
+
+        try:
+            with torch.no_grad():
+                generated = self._model.generate(
+                    **inputs,
+                    max_new_tokens=gen_max_tokens,
+                    temperature=gen_temperature,
+                    do_sample=gen_temperature > 0,
+                    pad_token_id=self._tokenizer.eos_token_id,
+                )
+        except RuntimeError as e:
+            if self._device.type == "cuda" and "out of memory" in str(e).lower():
+                print("[Warning] CUDA OOM during local HF generation; retrying on CPU.")
+                self._model = self._model.to("cpu")
+                self._device = torch.device("cpu")
+                inputs = {k: v.to(self._device) for k, v in inputs.items()}
+                with torch.no_grad():
+                    generated = self._model.generate(
+                        **inputs,
+                        max_new_tokens=gen_max_tokens,
+                        temperature=gen_temperature,
+                        do_sample=gen_temperature > 0,
+                        pad_token_id=self._tokenizer.eos_token_id,
+                    )
+            else:
+                raise
+
+        generated_text = self._tokenizer.decode(
+            generated[0][inputs["input_ids"].shape[1]:],
+            skip_special_tokens=True,
+        )
+        return generated_text.strip()
     
     def chat_messages(
         self,
@@ -173,6 +282,48 @@ class LLMClient:
         Returns:
             Response text
         """
+        if self.config.provider == "hf":
+            prompt = self._tokenizer.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=True,
+            )
+            inputs = self._tokenizer(prompt, return_tensors="pt")
+            inputs = {k: v.to(self._device) for k, v in inputs.items()}
+            gen_temperature = temperature if temperature is not None else self.config.temperature
+            gen_max_tokens = max_tokens if max_tokens is not None else self.config.max_tokens
+
+            import torch
+            try:
+                with torch.no_grad():
+                    generated = self._model.generate(
+                        **inputs,
+                        max_new_tokens=gen_max_tokens,
+                        temperature=gen_temperature,
+                        do_sample=gen_temperature > 0,
+                        pad_token_id=self._tokenizer.eos_token_id,
+                    )
+            except RuntimeError as e:
+                if self._device.type == "cuda" and "out of memory" in str(e).lower():
+                    print("[Warning] CUDA OOM during local HF generation; retrying on CPU.")
+                    self._model = self._model.to("cpu")
+                    self._device = torch.device("cpu")
+                    inputs = {k: v.to(self._device) for k, v in inputs.items()}
+                    with torch.no_grad():
+                        generated = self._model.generate(
+                            **inputs,
+                            max_new_tokens=gen_max_tokens,
+                            temperature=gen_temperature,
+                            do_sample=gen_temperature > 0,
+                            pad_token_id=self._tokenizer.eos_token_id,
+                        )
+                else:
+                    raise
+            return self._tokenizer.decode(
+                generated[0][inputs["input_ids"].shape[1]:],
+                skip_special_tokens=True,
+            ).strip()
+
         response = self._client.chat.completions.create(
             model=self._model,
             messages=messages,

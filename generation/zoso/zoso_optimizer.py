@@ -29,6 +29,51 @@ from openai import OpenAI
 from ...llm_client import LLMConfig, LLMClient, create_llm_client
 
 
+def _call_chat_completion(client, model_name: str, messages: List[Dict[str, str]], temperature: float = 0.0, max_tokens: int = 256) -> str:
+    """Call either an OpenAI client or the repo's LLMClient abstraction."""
+    if hasattr(client, "chat_messages") and callable(client.chat_messages):
+        return client.chat_messages(messages, temperature=temperature, max_tokens=max_tokens)
+
+    if hasattr(client, "chat") and callable(client.chat):
+        if len(messages) == 2 and messages[0].get("role") == "system" and messages[1].get("role") == "user":
+            return client.chat(
+                user_message=messages[1].get("content", ""),
+                system_message=messages[0].get("content", ""),
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+
+    if hasattr(client, "chat") and hasattr(client.chat, "completions"):
+        response = client.chat.completions.create(
+            model=model_name,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        return response.choices[0].message.content or ""
+
+    raise TypeError(f"Unsupported client type for chat completion: {type(client).__name__}")
+
+
+def build_zoso_client(config: "ZOSOConfig", llm_config: Optional[LLMConfig] = None):
+    """Create a client for ZOSO, preferring the local HF backend when configured."""
+    if llm_config is not None and llm_config.provider == "hf":
+        return create_llm_client(llm_config)
+
+    if config.api_key:
+        return OpenAI(base_url=config.api_base_url, api_key=config.api_key)
+
+    if llm_config is not None:
+        return create_llm_client(llm_config)
+
+    return create_llm_client(LLMConfig(
+        provider="hf",
+        api_key="",
+        api_base=config.api_base_url,
+        model=config.model_name,
+    ))
+
+
 # ============================================================================
 # Default Paths
 # ============================================================================
@@ -272,13 +317,13 @@ Output format (one per line):
 <id>: <CATEGORY>"""
             
             try:
-                response = self.client.chat.completions.create(
-                    model=self.config.model_name,
-                    messages=[{"role": "user", "content": prompt}],
+                content = _call_chat_completion(
+                    self.client,
+                    self.config.model_name,
+                    [{"role": "user", "content": prompt}],
                     temperature=0.0,
                     max_tokens=1024,
                 )
-                content = response.choices[0].message.content or ""
                 
                 for line in content.strip().split("\n"):
                     if ":" in line:
@@ -485,6 +530,7 @@ class RAGEvaluator:
         corpus_texts: List[str],
         contriever,
         contriever_tokenizer,
+        client=None,
     ):
         self.data = golden_data
         self.config = config
@@ -497,10 +543,7 @@ class RAGEvaluator:
         self.device = next(contriever.parameters()).device
         
         # LLM client
-        self.client = OpenAI(
-            base_url=config.api_base_url,
-            api_key=config.api_key
-        )
+        self.client = client if client is not None else build_zoso_client(config)
         
         print(f"  RAG Evaluator initialized with {len(self.data)} golden samples")
         print(f"  Corpus: {len(corpus_texts)} docs, Retrieval: first-{config.retrieval_first_k} -> top-{config.retrieval_top_k}")
@@ -620,17 +663,16 @@ class RAGEvaluator:
         system = "You are a QA assistant. Answer based on context. Output: 'Final answer: <answer>'"
         user = f"CONTEXT:\n{context}\n\nQUESTION: {question}"
         
-        response = self.client.chat.completions.create(
-            model=self.config.model_name,
-            messages=[
+        content = _call_chat_completion(
+            self.client,
+            self.config.model_name,
+            [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user}
             ],
             temperature=0.0,
             max_tokens=256,
         )
-        
-        content = response.choices[0].message.content or ""
         for line in reversed(content.strip().split("\n")):
             if "final answer:" in line.lower():
                 parts = line.split(":", 1)
@@ -714,6 +756,7 @@ class ZOSOOptimizer:
             corpus_texts,
             contriever,
             contriever_tokenizer,
+            client=getattr(data_manager, "client", None),
         )
         
         # Proxy Network & GP
@@ -941,9 +984,10 @@ def main():
     from transformers import AutoModel, AutoTokenizer
     
     parser = argparse.ArgumentParser(description="ZOSO: Zeroth-Order Suffix Optimization")
-    parser.add_argument("--api-key", type=str, required=True, help="OpenAI API key")
-    parser.add_argument("--api-base", type=str, default="https://api.openai.com/v1", help="API base URL")
-    parser.add_argument("--model", type=str, default="gpt-4o-mini", help="Model name")
+    parser.add_argument("--provider", type=str, default="openai", choices=["openai", "custom", "hf"], help="LLM backend provider")
+    parser.add_argument("--api-key", type=str, default="", help="OpenAI-compatible API key (optional for local HF)")
+    parser.add_argument("--api-base", type=str, default="https://api.openai.com/v1", help="API base URL for OpenAI-compatible backends")
+    parser.add_argument("--model", type=str, default="gpt-4o-mini", help="Model name for the selected backend")
     parser.add_argument("--suffix-pool", type=str, required=True, help="Suffix candidates JSON file")
     parser.add_argument("--data", type=str, required=True, help="Data JSON file with adversarial texts")
     parser.add_argument("--corpus-embs", type=str, required=True, help="Corpus embeddings .npy file")
@@ -970,6 +1014,13 @@ def main():
         golden_set_size=args.golden_size,
         retrieval_top_k=args.retrieval_top_k,
         retrieval_first_k=args.retrieval_first_k,
+    )
+
+    llm_config = LLMConfig(
+        provider=args.provider,
+        api_key=args.api_key,
+        api_base=args.api_base if args.provider != "hf" else "",
+        model=args.model,
     )
     
     # Load data
@@ -999,7 +1050,7 @@ def main():
     
     # Initialize DataManager (with semantic labeling)
     print("Initializing DataManager...")
-    client = OpenAI(base_url=config.api_base_url, api_key=config.api_key)
+    client = build_zoso_client(config, llm_config)
     data_mgr = DataManager(all_data, config, client)
     
     # Optimize

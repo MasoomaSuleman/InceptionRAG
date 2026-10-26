@@ -24,6 +24,53 @@ bash scripts/download_all_datasets.sh
 python -m InceptionRAG.attack_example --config config.yaml --dataset nq --limit 20
 ```
 
+## Running on /tmp when the home disk is quota-limited
+
+If your home directory has a strict quota (or the dataset/corpus cache is too large for the default filesystem), keep the large generated artifacts under `/tmp` and point the attack at those paths explicitly.
+
+A typical setup is:
+
+```bash
+mkdir -p /tmp/[username]/inception_rag/{samples,corpus,results,data}
+
+# optional: separate venv on /tmp
+mkdir -p /tmp/[username]/venvs
+python -m venv /tmp/[username]/venvs/InceptionRAG
+source /tmp/[username]/venvs/InceptionRAG/bin/activate
+
+# install project dependencies
+cd /cs/home/[username]/Documents/InceptionRAG
+pip install -r requirements.txt
+```
+
+Then create or copy the dataset/corpus files into the `/tmp` workspace before running the attack:
+
+```bash
+# copy the repo data folder to tmp if needed
+cp -r /cs/home/[username]/Documents/InceptionRAG/data /tmp/[username]/inception_rag/
+
+# example: prepare a local query list and corpus artifacts in /tmp
+# the exact filenames may differ depending on your dataset
+ls /tmp/[username]/inception_rag/data
+```
+
+For a full run, pass the `/tmp` file paths directly:
+
+```bash
+cd /cs/home/[username]/Documents/InceptionRAG
+python -m InceptionRAG.run_attack \
+  --config /cs/home/[username]/Documents/InceptionRAG/config.yaml \
+  --input-queries /tmp/[username]/inception_rag/samples/hotpotqa_queries_100.json \
+  --suffix-pool /cs/home/[username]/Documents/InceptionRAG/data/suffix_pool/suffix_candidates.json \
+  --corpus-embs /tmp/[username]/inception_rag/corpus/hotpotqa_contriever_embs.npy \
+  --corpus-texts /tmp/[username]/inception_rag/corpus/hotpotqa_corpus_texts.json \
+  --output /tmp/[username]/inception_rag/results/hotpotqa_attack_100.json \
+  --limit 100 \
+  --stage1
+```
+
+This pattern keeps the heavy outputs away from the quota-limited home directory while still using the project code from the repository checkout under `/cs/home/[username]/Documents/InceptionRAG`.
+
 ## Overview
 
 InceptionRAG exploits RAG pipelines through a three-stage attack:
