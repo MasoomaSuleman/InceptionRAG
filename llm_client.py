@@ -43,6 +43,17 @@ from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Any
 
+HF_CACHE_DIR = os.environ.get("HF_HOME") or os.environ.get("TRANSFORMERS_CACHE") or "/tmp/masoo20/hf-cache"
+os.makedirs(HF_CACHE_DIR, exist_ok=True)
+os.environ.setdefault("HF_HOME", HF_CACHE_DIR)
+os.environ.setdefault("TRANSFORMERS_CACHE", os.path.join(HF_CACHE_DIR, "transformers"))
+os.environ.setdefault("HF_HUB_CACHE", os.path.join(HF_CACHE_DIR, "hub"))
+
+try:
+    from huggingface_hub import snapshot_download
+except Exception:  # pragma: no cover
+    snapshot_download = None
+
 
 @dataclass
 class LLMConfig:
@@ -85,6 +96,36 @@ class LLMConfig:
         )
 
 
+def _resolve_local_model_path(model_name: str) -> str:
+    """Resolve a repo ID to the cached snapshot directory when running fully offline."""
+    if not model_name:
+        return model_name
+
+    if os.path.exists(model_name):
+        return model_name
+
+    if snapshot_download is not None and "/" in model_name:
+        try:
+            return snapshot_download(
+                repo_id=model_name,
+                cache_dir=HF_CACHE_DIR,
+                local_files_only=True,
+            )
+        except Exception:
+            pass
+
+    candidate = os.path.join(HF_CACHE_DIR, "models--" + model_name.replace("/", "--"))
+    if os.path.isdir(candidate):
+        snapshot_root = os.path.join(candidate, "snapshots")
+        if os.path.isdir(snapshot_root):
+            snapshot_dirs = sorted(os.listdir(snapshot_root))
+            if snapshot_dirs:
+                return os.path.join(snapshot_root, snapshot_dirs[0])
+        return candidate
+
+    return model_name
+
+
 class LLMClient:
     """Abstract LLM Client"""
     
@@ -108,8 +149,8 @@ class LLMClient:
         import torch
         from transformers import AutoTokenizer, AutoModelForCausalLM
 
-        model_name = self.config.model or "Qwen/Qwen2.5-7B-Instruct"
-        self._tokenizer = AutoTokenizer.from_pretrained(model_name)
+        model_name = _resolve_local_model_path(self.config.model or "Qwen/Qwen2.5-7B-Instruct")
+        self._tokenizer = AutoTokenizer.from_pretrained(model_name, local_files_only=True)
         if self._tokenizer.pad_token is None:
             self._tokenizer.pad_token = self._tokenizer.eos_token
 
@@ -123,6 +164,7 @@ class LLMClient:
                     torch_dtype=torch_dtype,
                     device_map="auto",
                     low_cpu_mem_usage=True,
+                    local_files_only=True,
                 )
             else:
                 self._model = AutoModelForCausalLM.from_pretrained(
@@ -130,6 +172,7 @@ class LLMClient:
                     torch_dtype=torch_dtype,
                     device_map=None,
                     low_cpu_mem_usage=True,
+                    local_files_only=True,
                 )
                 self._model = self._model.to(device)
         except RuntimeError as e:
@@ -140,6 +183,7 @@ class LLMClient:
                     torch_dtype=torch.float32,
                     device_map=None,
                     low_cpu_mem_usage=True,
+                    local_files_only=True,
                 )
                 self._model = self._model.to("cpu")
                 device = "cpu"

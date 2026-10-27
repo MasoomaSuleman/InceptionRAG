@@ -41,6 +41,9 @@ attack:
   cttft_neighbor_k: 10         # CTTFT neighbor count
   noise_injection: true        # Enable polymorphic noise
   dual_injection: true         # Enable dual-ended injection
+  query_prefix: true           # Prepend the original question before each adversarial doc
+  rerank_top_k: 10            # Keep up to this many docs after reranking (optional)
+  use_reranker: false         # Enable reranking after retrieval (optional)
 
 # =============================================================================
 # Dataset Configuration

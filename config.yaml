@@ -8,8 +8,11 @@ llm:
   model: "microsoft/Phi-3.5-mini-instruct" # local HF model name
 
 attack:
-  retrieval_top_k: 10
+  retrieval_top_k: 12
   retrieval_first_k: 20
   cttft_neighbor_k: 10
   noise_injection: true
   dual_injection: true
+  query_prefix: false
+  rerank_top_k: 6
+  use_reranker: true
