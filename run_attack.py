@@ -1000,37 +1000,43 @@ def main():
             print("Stage 1 reuse checkpoint: skipping generation and ZOSO optimization.")
             print("=" * 60)
     
-    # Auto-resolve paths if --dataset is specified (all from InceptionRAG/data/)
+    # Auto-resolve paths if --dataset is specified.
     if args.dataset:
         ds = args.dataset.lower()
         model_folder = llm_config.model.replace(".", "-").replace(" ", "-")
         limit = args.limit or 100
-        
-        # Data paths (using InceptionRAG/data/)
+
         if not args.data:
-            # Prioritize newly generated ADV data
-            adv_data = BASE_DIR / f"InceptionRAG/data/adv/{ds}/{ds}_0-{limit}_with_ad.json"
-            if adv_data.exists():
+            adv_candidates = _candidate_stage_artifact_paths(args.output, llm_config.model, "_with_ad")
+            adv_candidates.extend([
+                BASE_DIR / f"InceptionRAG/data/adv/{ds}/{ds}_0-{limit}_with_ad.json",
+                BASE_DIR / f"InceptionRAG/data/adv/{ds}/{ds}_0-100_with_ad.json",
+            ])
+            adv_data = next((p for p in adv_candidates if p.exists()), None)
+            if adv_data is not None:
                 args.data = str(adv_data)
             else:
-                print(f"Error: ADV data not found at {adv_data}")
+                print(f"Error: ADV data not found at any of: {adv_candidates}")
                 print(f"Please run with --generate first")
                 return
-        
+
         if not args.suffix_pool:
             args.suffix_pool = str(BASE_DIR / "InceptionRAG/data/suffix_pool/suffix_candidates.json")
-        
+
         if not args.zoso_results:
-            zoso_path = BASE_DIR / f"InceptionRAG/data/suffix_pool/zoso_results/{model_folder}/{ds}_zoso_results.json"
-            if zoso_path.exists():
+            zoso_candidates = _candidate_stage_artifact_paths(args.output, llm_config.model, "_zoso")
+            zoso_candidates.extend([
+                BASE_DIR / f"InceptionRAG/data/suffix_pool/zoso_results/{model_folder}/{ds}_zoso_results.json",
+            ])
+            zoso_path = next((p for p in zoso_candidates if p.exists()), None)
+            if zoso_path is not None:
                 args.zoso_results = str(zoso_path)
-        
-        # Corpus cache (using InceptionRAG/data/corpus/)
+
         if not args.corpus_embs:
             args.corpus_embs = str(BASE_DIR / f"InceptionRAG/data/corpus/{ds}_contriever_embs.npy")
         if not args.corpus_texts:
             args.corpus_texts = str(BASE_DIR / f"InceptionRAG/data/corpus/{ds}_corpus_texts.json")
-        
+
         print(f"[Auto] Dataset: {ds}, Model: {model_folder}")
 
     # Validate required paths
