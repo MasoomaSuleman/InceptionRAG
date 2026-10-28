@@ -1,6 +1,11 @@
 from pathlib import Path
 
-from InceptionRAG.run_attack import _resolve_model_output_path, _append_output_suffix, load_attack_config_from_yaml
+from InceptionRAG.run_attack import (
+    _candidate_stage_artifact_paths,
+    _resolve_model_output_path,
+    _append_output_suffix,
+    load_attack_config_from_yaml,
+)
 
 
 def test_load_attack_config_from_yaml_respects_rerank_top_k(tmp_path):
@@ -54,3 +59,18 @@ def test_reranker_output_uses_base_name_for_stage_artifacts():
         "Qwen/Qwen2.5-3B-Instruct",
     )
     assert result == Path("/tmp/masoo20/inception_rag/results/Qwen-Qwen2-5-3B-Instruct/hotpotqa_attack_100_with_ad.json")
+
+
+def test_stage_artifact_candidates_include_model_and_base_paths():
+    candidates = _candidate_stage_artifact_paths(
+        "/tmp/masoo20/inception_rag/results/Qwen-Qwen2.5-3B-Instruct/hotpotqa_attack_100_with_reranker.json",
+        "Qwen/Qwen2.5-3B-Instruct",
+        "_with_ad",
+    )
+
+    assert candidates[0] == Path(
+        "/tmp/masoo20/inception_rag/results/Qwen-Qwen2-5-3B-Instruct/hotpotqa_attack_100_with_ad.json"
+    )
+    assert Path(
+        "/tmp/masoo20/inception_rag/results/hotpotqa_attack_100_with_ad.json"
+    ) in candidates

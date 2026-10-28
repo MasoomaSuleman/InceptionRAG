@@ -718,6 +718,56 @@ def _append_output_suffix(path_str: str, suffix_name: str, model_name: Optional[
     return _resolve_model_output_path(path_str, model_name, suffix_name)
 
 
+def _candidate_stage_artifact_paths(path_str: str, model_name: str, suffix_name: str = "") -> List[Path]:
+    """Return ordered candidate paths for stage artifacts, including legacy unscoped output paths.
+
+    The attack pipeline may try to reuse stage 1 outputs from either the final model-scoped
+    result directory or a legacy plain results folder. Keep both options so dataset-driven runs
+    can recover the correct checkpoint without crashing.
+    """
+    candidates: List[Path] = []
+    seen = set()
+
+    def add_candidate(path: Path) -> None:
+        if path not in seen:
+            candidates.append(path)
+            seen.add(path)
+
+    path = Path(path_str)
+    if path.name:
+        base_name = path.name
+        for strip_suffix in ("_with_reranker", "_with_hodor", "_with_ad", "_zoso"):
+            if base_name.endswith(strip_suffix):
+                base_name = base_name[: -len(strip_suffix)]
+                break
+        base_stem, ext = path.stem, path.suffix
+        if path.suffix:
+            base_stem = base_name[:-len(path.suffix)] if base_name.endswith(path.suffix) else base_stem
+        else:
+            base_stem = base_name
+        if suffix_name:
+            stage_name = f"{base_stem}{suffix_name}{ext}"
+        else:
+            stage_name = f"{base_stem}{ext}"
+    else:
+        stage_name = path.name
+
+    add_candidate(_resolve_model_output_path(path_str, model_name, suffix_name))
+
+    if model_name and _sanitize_model_dir(model_name) in path.parts:
+        legacy_parent = path.parent.parent if path.parent.name == _sanitize_model_dir(model_name) else path.parent
+    else:
+        legacy_parent = path.parent
+
+    add_candidate(legacy_parent / stage_name)
+
+    if path.parent.name == _sanitize_model_dir(model_name):
+        sibling_parent = path.parent.parent
+        add_candidate(sibling_parent / stage_name)
+
+    return candidates
+
+
 def main():
     import argparse
     from transformers import AutoModel, AutoTokenizer
