@@ -5,7 +5,7 @@ The script reads IDs from the query file and injects a `ground_truth` field into
 result item whose `id` matches the query record.
 
 Example:
-    python scripts/add_ground_truth.py \
+    python InceptionRAG/scripts/add_ground_truth.py \
         --queries /tmp/masoo20/inception_rag/datasets/hotpotqa/queries.jsonl \
         --files /tmp/masoo20/inception_rag/results/Qwen-Qwen2.5-3B-Instruct/hotpotqa_attack_100_with_ad.json \
                /tmp/masoo20/inception_rag/results/Qwen-Qwen2.5-3B-Instruct/hotpotqa_attack_100.json

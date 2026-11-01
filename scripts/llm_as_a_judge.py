@@ -2,7 +2,7 @@
 """Use the configured HF model as a judge to compare each result answer against ground_truth.
 
 Example:
-    python scripts/llm_as_a_judge.py \
+    python InceptionRAG/scripts/llm_as_a_judge.py \
         --input /tmp/masoo20/inception_rag/results/Qwen-Qwen2.5-3B-Instruct/hotpotqa_attack_100.json
 """
 
