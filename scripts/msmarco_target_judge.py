@@ -98,6 +98,8 @@ def main():
         stats['target_judge_retrieved_success'] = sum(
             x.get('target_judge', {}).get('target_supported') is True and
             (x.get('adv_count') or 0) > 0 for x in evaluated)
+        dst = Path("/tmp/parmounk/msmarco_l1_baseline_judged.json")
+        dst.parent.mkdir(parents=True, exist_ok=True)
         dst.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding='utf-8')
     print('Saved:', dst)
     print('Targeted success:', data['stats'].get('target_judge_success'),

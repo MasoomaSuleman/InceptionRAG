@@ -510,6 +510,7 @@ class InceptionRAGAttacker:
         # Skip retrieval: use poisoned docs directly (higher ASR)
         if self.config.skip_retrieval:
             context = poisoned
+            adv_count = len(poisoned)
         else:
             context, adv_count = self.retriever.retrieve(question, poisoned)
         
@@ -522,9 +523,9 @@ class InceptionRAGAttacker:
             else:
                 answer = self._call_llm(question, context)
             success = self._check_success(answer, item)
-            return success, answer, context
+            return success, answer, context, adv_count
         except Exception as e:
-            return False, str(e), context
+            return False, str(e), context, adv_count
     
     def attack_single(self, item: dict) -> Dict:
         """
@@ -545,6 +546,7 @@ class InceptionRAGAttacker:
             "answer": "",
             "context": [],
             "queries": 0,
+            "adv_count":0
         }
         
         # Print target answer
@@ -552,9 +554,11 @@ class InceptionRAGAttacker:
         
         # ========== L1: Global Probe ==========
         print(f"    [L1] Global...", end=" ", flush=True)
-        success, answer, context = self._try_attack(item, self.global_anchor, self.global_bridge, question)
+        success, answer, context, adv_count = self._try_attack(item, self.global_anchor, self.global_bridge, question)
         result["queries"] += 1
         result["context"] = context
+        result["adv_count"] = adv_count
+    
         
         if success:
             print(f"✓")
@@ -574,9 +578,11 @@ class InceptionRAGAttacker:
         
         for i, a_idx in enumerate(self.anchor_neighbors):
             test_anchor = self.pool.anchors[a_idx]
-            success, answer, context = self._try_attack(item, test_anchor, self.global_bridge, question)
+            success, answer, context, adv_count = self._try_attack(item, test_anchor, self.global_bridge, question)
             result["queries"] += 1
             result["context"] = context
+            result["adv_count"] = adv_count
+            result["answer"]= answer
             
             if success:
                 print(f"✓ [{i+1}]")
@@ -594,9 +600,11 @@ class InceptionRAGAttacker:
         
         for i, b_idx in enumerate(self.bridge_neighbors):
             test_bridge = self.pool.bridges[b_idx]
-            success, answer, context = self._try_attack(item, best_anchor, test_bridge, question)
+            success, answer, context, adv_count = self._try_attack(item, best_anchor, test_bridge, question)
             result["queries"] += 1
             result["context"] = context
+            result["adv_count"] = adv_count
+            result["answer"] = answer
             
             if success:
                 print(f"✓ [{i+1}]")

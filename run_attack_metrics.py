@@ -407,7 +407,7 @@ class InceptionRAGAttacker:
         question: str
     ) -> List[str]:
         """Build poisoned documents with noise injection and dual-ended injection"""
-        ad = item.get("ad_text") or {}
+        ad = item.get("ad_text") or item
         text1 = ad.get("attribute_document") or ad.get("text1") or ""
         text2 = ad.get("bridge_document") or ad.get("text2") or ""
         
