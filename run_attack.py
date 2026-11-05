@@ -279,31 +279,76 @@ class TwoStageRetriever:
             emb = self.contriever(**inputs).last_hidden_state.mean(dim=1).cpu().numpy()[0]
         return emb / (np.linalg.norm(emb) + 1e-8)
     
-    def retrieve(self, question: str, poisoned_texts: List[str]) -> Tuple[List[str], int]:
+    def retrieve(
+        self,
+        question: str,
+        poisoned_texts: List[str]
+    ) -> Tuple[List[str], int]:
         """
         Two-stage retrieval:
-        Stage 1: Retrieve first_k from corpus
-        Stage 2: Merge with poisoned, re-rank, select top_k
+        Stage 1: Retrieve first_k documents from the original corpus.
+        Stage 2: Merge original and poisoned passages, then rank candidates.
         """
+
         query_emb = self._encode(question)
-        
-        # Stage 1
+
+        # Stage 1: Retrieve documents from the original corpus
         corpus_scores = self.corpus_embs @ query_emb
-        top_indices = np.argsort(corpus_scores)[::-1][:self.config.retrieval_first_k]
-        
-        # Stage 2
+
+        top_indices = np.argsort(corpus_scores)[::-1][
+            :self.config.retrieval_first_k
+        ]
+
+        # Stage 2: Combine original and poisoned documents
         num_corpus = len(top_indices)
-        candidate_texts = [self.corpus_texts[i] for i in top_indices] + poisoned_texts
-        
-        candidate_embs = np.array([self._encode(t) for t in candidate_texts])
+
+        candidate_texts = (
+            [self.corpus_texts[i] for i in top_indices]
+            + poisoned_texts
+        )
+
+        candidate_embs = np.array([
+            self._encode(text) for text in candidate_texts
+        ])
+
         candidate_scores = candidate_embs @ query_emb
-        
+
+        # Option A: Cross-encoder reranking
         if self.reranker is not None:
-            ranked_texts = self.reranker.rerank(question, candidate_texts, candidate_scores)
-            final_texts = ranked_texts[: self.config.retrieval_top_k]
-            adv_count = sum(1 for t in final_texts if t in poisoned_texts)
+
+            ranked_texts = self.reranker.rerank(
+                question,
+                candidate_texts,
+                candidate_scores
+            )
+
+            final_texts = ranked_texts[:self.config.retrieval_top_k]
+
+            adv_count = sum(
+                1 for text in final_texts
+                if text in poisoned_texts
+            )
+
+        # Option B: Contriever similarity ranking (no cross-encoder)
+        else:
+
+            final_indices = np.argsort(candidate_scores)[::-1][
+                :self.config.retrieval_top_k
+            ]
+
+            final_texts = [
+                candidate_texts[i] for i in final_indices
+            ]
+
+            # Poisoned documents were appended after the corpus documents
+            adv_count = sum(
+                1 for i in final_indices if i >= num_corpus
+            )
+
+        if torch.cuda.is_available():
             torch.cuda.empty_cache()
-            return final_texts, adv_count
+
+        return final_texts, adv_count
 
 # ============================================================================
 # Suffix Pool
@@ -363,8 +408,10 @@ class InceptionRAGAttacker:
         retriever: TwoStageRetriever,
         optimal_anchor_idx: int = 0,
         optimal_bridge_idx: int = 0,
+        config_yaml_text: Optional[str] = None,
     ):
         self.config = config
+        self.config_yaml_text = config_yaml_text
         self.pool = suffix_pool
         self.retriever = retriever
         
@@ -675,6 +722,8 @@ class InceptionRAGAttacker:
                 "retrieval_top_k": self.config.retrieval_top_k,
                 "cttft_neighbor_k": self.config.cttft_neighbor_k,
             },
+            "config_yaml": self.config_yaml_text,
+
             "stats": {
                 "total": total,
                 "attack_success": self.stats["attack_success"],
@@ -962,6 +1011,12 @@ def main():
     parser.add_argument("--add-gt", action="store_true", help="add ground truth information to ourput JSON file")
     parser.add_argument("--llm-judge", action="store_true", help="Use an llm as judge to get more accurate ASR")
     args = parser.parse_args()
+
+    # Preserve the exact YAML configuration for the output JSON
+    config_yaml_text = None
+    if args.config:
+        with open(args.config, "r", encoding="utf-8") as f:
+            config_yaml_text = f.read()
     
     # Build LLM config
     attack_cfg = load_attack_config_from_yaml(args.config) if args.config else {}
@@ -1613,7 +1668,7 @@ def main():
     print("\n[5/5] Initializing attacker...")
     reranker = PassageReranker(config.reranker_model, top_k=config.rerank_top_k) if config.use_reranker else None
     retriever = TwoStageRetriever(corpus_texts, corpus_embs, contriever, contriever_tokenizer, config, reranker=reranker)
-    attacker = InceptionRAGAttacker(config, suffix_pool, retriever, optimal_anchor_idx, optimal_bridge_idx)
+    attacker = InceptionRAGAttacker(config, suffix_pool, retriever, optimal_anchor_idx, optimal_bridge_idx, config_yaml_text)
     
     # Attack
     print("\n" + "=" * 60)

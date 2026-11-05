@@ -8,7 +8,7 @@
 
 A multi-stage adversarial attack framework targeting Retrieval-Augmented Generation (RAG) systems.
 
-## Quick Start on DISA tcsh
+## Prepare Environment on DISA tcsh
 If your home directory has a strict quota (or the dataset/corpus cache is too large for the default filesystem), keep the large generated artifacts under `/tmp` and point the attack at those paths explicitly.
 
 ```bash
@@ -44,7 +44,11 @@ mkdir -p \
     $XDG_CACHE_HOME \
     $TORCH_HOME \
     $TMPDIR
+```
 
+## Run Code
+
+```
 # 2. Download datasets and build corpus index
 # Dataset options are "nq", "hotpotqa", "msmarco"
 python data/download_datasets.py --dataset nq --output-dir /tmp/$USER/InceptionRAG_data
@@ -53,9 +57,86 @@ python data/download_datasets.py --dataset nq --output-dir /tmp/$USER/InceptionR
 # 3. Configure (add your API key)
 # Edit config.yaml with your API credentials
 
-# 4. Run attack with example data
-python -m InceptionRAG.run_attack --config config.yaml --dataset nq --limit 20 --stage1 --output /tmp/$USER/InceptionRAG_data/results/attack_results.json
+# 4. Run attack with data
+# only use parameter --stage1 for first time to generate adversarial data
+python -m InceptionRAG.run_attack --config config.yaml --dataset nq --limit 1000 --data-root /tmp/$USER/InceptionRAG_data --output /tmp/$USER/InceptionRAG_data/results/attack_results.json --add-gt --llm-judge --stage1
+
 ```
+
+## Baselines
+Run the `run_attack.py` command for the following `config.yaml` configurations:
+```yaml
+attack:
+  retrieval_top_k: 20
+  retrieval_first_k: 20
+  cttft_neighbor_k: 10
+  noise_injection: true
+  dual_injection: false
+  query_prefix: false
+  rerank_top_k: 6
+  use_reranker: false
+```
+
+```yaml
+attack:
+  retrieval_top_k: 20
+  retrieval_first_k: 20
+  cttft_neighbor_k: 10
+  noise_injection: true
+  dual_injection: true
+  query_prefix: false
+  rerank_top_k: 6
+  use_reranker: false
+```
+
+```yaml
+attack:
+  retrieval_top_k: 20
+  retrieval_first_k: 20
+  cttft_neighbor_k: 10
+  noise_injection: true
+  dual_injection: true
+  query_prefix: true
+  rerank_top_k: 6
+  use_reranker: false
+```
+
+```yaml
+attack:
+  retrieval_top_k: 50
+  retrieval_first_k: 20
+  cttft_neighbor_k: 10
+  noise_injection: true
+  dual_injection: false
+  query_prefix: false
+  rerank_top_k: 6
+  use_reranker: false
+```
+
+```yaml
+attack:
+  retrieval_top_k: 50
+  retrieval_first_k: 20
+  cttft_neighbor_k: 10
+  noise_injection: true
+  dual_injection: true
+  query_prefix: false
+  rerank_top_k: 6
+  use_reranker: false
+```
+
+```yaml
+attack:
+  retrieval_top_k: 50
+  retrieval_first_k: 20
+  cttft_neighbor_k: 10
+  noise_injection: true
+  dual_injection: true
+  query_prefix: true
+  rerank_top_k: 6
+  use_reranker: false
+```
+
 
 
 For a full run, pass the `/tmp` file paths directly:
