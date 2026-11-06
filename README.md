@@ -59,83 +59,40 @@ python data/download_datasets.py --dataset nq --output-dir /tmp/$USER/InceptionR
 
 # 4. Run attack with data
 # only use parameter --stage1 for first time to generate adversarial data
-python -m InceptionRAG.run_attack --config config.yaml --dataset nq --limit 1000 --data-root /tmp/$USER/InceptionRAG_data --output /tmp/$USER/InceptionRAG_data/results/attack_results.json --add-gt --llm-judge --stage1
+python -m InceptionRAG.run_attack --config config.yaml --dataset nq --limit 100 --data-root /tmp/$USER/InceptionRAG_data --output /tmp/$USER/InceptionRAG_data/results/attack_results.json --add-gt --llm-judge --stage1
 
 ```
 
 ## Baselines
-Run the `run_attack.py` command for the following `config.yaml` configurations:
-```yaml
-attack:
+To get the baseline results for each dataset in InceptionRAG, run the following command:
+```bash
+python run_baselines.py --data-root path/to/data --output-dir /path/to/results-dir --dataset nq/hotpotqa/msmarco
+```
+
+This code reads each attack configuration in the `baselines_config.txt` file. The file is structured as follows, if you wish to change it:
+```
+attack-name
+attack:	
   retrieval_top_k: 20
   retrieval_first_k: 20
   cttft_neighbor_k: 10
   noise_injection: true
   dual_injection: false
   query_prefix: false
-  rerank_top_k: 6
-  use_reranker: false
-```
-
-```yaml
-attack:
+  
+attack-name
+attack:	
   retrieval_top_k: 20
   retrieval_first_k: 20
   cttft_neighbor_k: 10
   noise_injection: true
   dual_injection: true
   query_prefix: false
-  rerank_top_k: 6
-  use_reranker: false
+
+...
 ```
 
-```yaml
-attack:
-  retrieval_top_k: 20
-  retrieval_first_k: 20
-  cttft_neighbor_k: 10
-  noise_injection: true
-  dual_injection: true
-  query_prefix: true
-  rerank_top_k: 6
-  use_reranker: false
-```
 
-```yaml
-attack:
-  retrieval_top_k: 50
-  retrieval_first_k: 20
-  cttft_neighbor_k: 10
-  noise_injection: true
-  dual_injection: false
-  query_prefix: false
-  rerank_top_k: 6
-  use_reranker: false
-```
-
-```yaml
-attack:
-  retrieval_top_k: 50
-  retrieval_first_k: 20
-  cttft_neighbor_k: 10
-  noise_injection: true
-  dual_injection: true
-  query_prefix: false
-  rerank_top_k: 6
-  use_reranker: false
-```
-
-```yaml
-attack:
-  retrieval_top_k: 50
-  retrieval_first_k: 20
-  cttft_neighbor_k: 10
-  noise_injection: true
-  dual_injection: true
-  query_prefix: true
-  rerank_top_k: 6
-  use_reranker: false
-```
 
 
 
