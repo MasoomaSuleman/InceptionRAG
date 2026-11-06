@@ -42,12 +42,14 @@ import yaml
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Any
+from transformers import AutoTokenizer, AutoModelForCausalLM
+import torch
 
 
 @dataclass
 class LLMConfig:
     """LLM API Configuration"""
-    provider: str = "openai"           # openai / azure / custom
+    provider: str = "openai"           # openai / azure / custom /hf
     api_key: str = ""
     api_base: str = ""                 # Custom base URL
     api_version: str = ""              # Azure only
@@ -97,6 +99,8 @@ class LLMClient:
         """Initialize the appropriate client based on provider"""
         if self.config.provider == "azure":
             self._init_azure()
+        elif self.config.provider == "hf":
+            self._init_hf()
         else:
             # OpenAI or Custom (both use OpenAI client)
             self._init_openai()
@@ -125,6 +129,56 @@ class LLMClient:
         )
         # Azure uses deployment name instead of model
         self._model = self.config.deployment
+
+    def _init_hf(self):
+        """Initialize a local Hugging Face model."""
+
+        # Store all HF files in /tmp
+        cache_dir = os.environ.get(
+            "HF_HOME",
+            f"/tmp/{os.environ['USER']}/hf-cache"
+        )
+
+        os.makedirs(cache_dir, exist_ok=True)
+
+        model_name = self.config.model
+
+        print(f"Loading HuggingFace model: {model_name}")
+        print(f"Cache directory: {cache_dir}")
+
+        # Download if needed
+        self._tokenizer = AutoTokenizer.from_pretrained(
+            model_name,
+            cache_dir=cache_dir,
+            trust_remote_code=True,
+        )
+
+        if self._tokenizer.pad_token is None:
+            self._tokenizer.pad_token = self._tokenizer.eos_token
+
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+
+        if device == "cuda":
+            self._model = AutoModelForCausalLM.from_pretrained(
+                model_name,
+                cache_dir=cache_dir,
+                torch_dtype=torch.bfloat16,
+                device_map="auto",
+                trust_remote_code=True,
+            )
+        else:
+            self._model = AutoModelForCausalLM.from_pretrained(
+                model_name,
+                cache_dir=cache_dir,
+                torch_dtype=torch.float32,
+                trust_remote_code=True,
+            )
+            self._model = self._model.to(device)
+
+        self._model.eval()
+        self._device = torch.device(device)
+
+        print(f"Loaded on {self._device}")
     
     def chat(
         self,
