@@ -187,18 +187,52 @@ class LLMClient:
         temperature: float = None,
         max_tokens: int = None,
     ) -> str:
-        """
-        Send a chat message and get response.
-        
-        Args:
-            user_message: User message content
-            system_message: System prompt
-            temperature: Override default temperature
-            max_tokens: Override default max tokens
-            
-        Returns:
-            Response text
-        """
+
+        # Hugging Face backend
+        if self.config.provider == "hf":
+            messages = [
+                {"role": "system", "content": system_message},
+                {"role": "user", "content": user_message},
+            ]
+
+            prompt = self._tokenizer.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=True,
+            )
+
+            inputs = self._tokenizer(
+                prompt,
+                return_tensors="pt",
+            ).to(self._device)
+
+            temp = (
+                temperature
+                if temperature is not None
+                else self.config.temperature
+            )
+
+            max_new = (
+                max_tokens
+                if max_tokens is not None
+                else self.config.max_tokens
+            )
+
+            with torch.no_grad():
+                outputs = self._model.generate(
+                    **inputs,
+                    max_new_tokens=max_new,
+                    temperature=temp,
+                    do_sample=temp > 0,
+                    pad_token_id=self._tokenizer.eos_token_id,
+                )
+
+            return self._tokenizer.decode(
+                outputs[0][inputs.input_ids.shape[1]:],
+                skip_special_tokens=True,
+            ).strip()
+
+        # OpenAI / Azure / Custom API
         response = self._client.chat.completions.create(
             model=self._model,
             messages=[
@@ -208,31 +242,62 @@ class LLMClient:
             temperature=temperature if temperature is not None else self.config.temperature,
             max_tokens=max_tokens if max_tokens is not None else self.config.max_tokens,
         )
+
         return response.choices[0].message.content or ""
     
     def chat_messages(
         self,
-        messages: List[Dict[str, str]],
-        temperature: float = None,
-        max_tokens: int = None,
-    ) -> str:
-        """
-        Send multiple messages and get response.
-        
-        Args:
-            messages: List of {"role": "...", "content": "..."} dicts
-            temperature: Override default temperature
-            max_tokens: Override default max tokens
-            
-        Returns:
-            Response text
-        """
+        messages,
+        temperature=None,
+        max_tokens=None,
+    ):
+
+        if self.config.provider == "hf":
+
+            prompt = self._tokenizer.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=True,
+            )
+
+            inputs = self._tokenizer(
+                prompt,
+                return_tensors="pt",
+            ).to(self._device)
+
+            temp = (
+                temperature
+                if temperature is not None
+                else self.config.temperature
+            )
+
+            max_new = (
+                max_tokens
+                if max_tokens is not None
+                else self.config.max_tokens
+            )
+
+            with torch.no_grad():
+                outputs = self._model.generate(
+                    **inputs,
+                    max_new_tokens=max_new,
+                    temperature=temp,
+                    do_sample=temp > 0,
+                    pad_token_id=self._tokenizer.eos_token_id,
+                )
+
+            return self._tokenizer.decode(
+                outputs[0][inputs.input_ids.shape[1]:],
+                skip_special_tokens=True,
+            ).strip()
+
         response = self._client.chat.completions.create(
             model=self._model,
             messages=messages,
             temperature=temperature if temperature is not None else self.config.temperature,
             max_tokens=max_tokens if max_tokens is not None else self.config.max_tokens,
         )
+
         return response.choices[0].message.content or ""
 
 
