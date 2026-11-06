@@ -4,6 +4,7 @@ import os
 import re
 import sys
 import time
+import yaml
 import numpy as np
 import torch
 from pathlib import Path
@@ -195,18 +196,6 @@ class TwoStageRetriever:
 # Suffix Pool
 # ============================================================================
 
-def _resolve_suffix_pool_path(path: Path) -> Path:
-    """Prefer the explicit path, then fall back to the bundled repo data directory."""
-    candidate = Path(path)
-    if candidate.exists():
-        return candidate
-
-    fallback = Path(__file__).resolve().parent / "data" / "suffix_pool" / candidate.name
-    if fallback.exists():
-        return fallback
-
-    return candidate
-
 
 class SuffixPool:
     """Suffix pool with neighbor search for CTTFT"""
@@ -214,7 +203,6 @@ class SuffixPool:
     def __init__(self, path: Path):
         from sentence_transformers import SentenceTransformer
 
-        path = _resolve_suffix_pool_path(path)
         with open(path, "r") as f:
             data = json.load(f)
         
@@ -772,6 +760,31 @@ def main():
     if args.config:
         # Load from config file
         llm_config = LLMConfig.from_yaml(args.config)
+
+        with open(args.config, "r") as f:
+            config_data = yaml.safe_load(f)
+
+        attack_cfg = config_data.get("attack", {})
+
+        retrieval_top_k = attack_cfg.get("retrieval_top_k", 20)
+        retrieval_first_k = attack_cfg.get("retrieval_first_k", 20)
+        cttft_neighbor_k = attack_cfg.get("cttft_neighbor_k", 10)
+        noise_injection = attack_cfg.get("noise_injection", True)
+        dual_injection = attack_cfg.get("dual_injection", False)
+        query_prefix = attack_cfg.get("query_prefix", False)
+
+        # Full config
+        config = InceptionRAGConfig(
+            llm_config=llm_config,
+            retrieval_top_k=retrieval_top_k,
+            retrieval_first_k=retrieval_first_k,
+            cttft_neighbor_k=cttft_neighbor_k,
+            noise_injection=noise_injection,
+            dual_injection=dual_injection,
+            use_hodor=args.hodor,
+            hodor_model=args.hodor_model,
+            llm_judge=args.llm_judge,
+        )
     else:
         # Build from CLI args
         if not args.api_key:
@@ -789,18 +802,18 @@ def main():
             model=args.model,
         )
     
-    # Full config
-    config = InceptionRAGConfig(
-        llm_config=llm_config,
-        retrieval_top_k=args.retrieval_top_k,
-        retrieval_first_k=args.retrieval_first_k,
-        cttft_neighbor_k=args.cttft_neighbor_k,
-        noise_injection=not args.no_noise,
-        dual_injection=not args.no_dual_injection,
-        use_hodor=args.hodor,
-        hodor_model=args.hodor_model,
-        llm_judge=args.llm_judge,
-    )
+        # Full config
+        config = InceptionRAGConfig(
+            llm_config=llm_config,
+            retrieval_top_k=args.retrieval_top_k,
+            retrieval_first_k=args.retrieval_first_k,
+            cttft_neighbor_k=args.cttft_neighbor_k,
+            noise_injection=not args.no_noise,
+            dual_injection=not args.no_dual_injection,
+            use_hodor=args.hodor,
+            hodor_model=args.hodor_model,
+            llm_judge=args.llm_judge,
+        )
     
     print("=" * 60)
     print("InceptionRAG Full Attack Pipeline")
@@ -1090,6 +1103,9 @@ def main():
     print("\n" + "=" * 60)
     print("Stage 3: Attack with CTTFT")
     print("=" * 60)
+
+    print(config.retrieval_first_k)
+    print(config.retrieval_top_k)
     
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)

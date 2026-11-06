@@ -43,22 +43,11 @@ from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Any
 
-HF_CACHE_DIR = os.environ.get("HF_HOME") or os.environ.get("TRANSFORMERS_CACHE") or "/tmp/masoo20/hf-cache"
-os.makedirs(HF_CACHE_DIR, exist_ok=True)
-os.environ.setdefault("HF_HOME", HF_CACHE_DIR)
-os.environ.setdefault("TRANSFORMERS_CACHE", os.path.join(HF_CACHE_DIR, "transformers"))
-os.environ.setdefault("HF_HUB_CACHE", os.path.join(HF_CACHE_DIR, "hub"))
-
-try:
-    from huggingface_hub import snapshot_download
-except Exception:  # pragma: no cover
-    snapshot_download = None
-
 
 @dataclass
 class LLMConfig:
     """LLM API Configuration"""
-    provider: str = "openai"           # openai / azure / custom / hf
+    provider: str = "openai"           # openai / azure / custom
     api_key: str = ""
     api_base: str = ""                 # Custom base URL
     api_version: str = ""              # Azure only
@@ -96,36 +85,6 @@ class LLMConfig:
         )
 
 
-def _resolve_local_model_path(model_name: str) -> str:
-    """Resolve a repo ID to the cached snapshot directory when available; otherwise allow a normal HF lookup."""
-    if not model_name:
-        return model_name
-
-    if os.path.exists(model_name):
-        return model_name
-
-    candidate = os.path.join(HF_CACHE_DIR, "models--" + model_name.replace("/", "--"))
-    if os.path.isdir(candidate):
-        snapshot_root = os.path.join(candidate, "snapshots")
-        if os.path.isdir(snapshot_root):
-            snapshot_dirs = sorted(os.listdir(snapshot_root))
-            if snapshot_dirs:
-                return os.path.join(snapshot_root, snapshot_dirs[0])
-        return candidate
-
-    if snapshot_download is not None and "/" in model_name:
-        try:
-            return snapshot_download(
-                repo_id=model_name,
-                cache_dir=HF_CACHE_DIR,
-                local_files_only=False,
-            )
-        except Exception:
-            pass
-
-    return model_name
-
-
 class LLMClient:
     """Abstract LLM Client"""
     
@@ -138,69 +97,10 @@ class LLMClient:
         """Initialize the appropriate client based on provider"""
         if self.config.provider == "azure":
             self._init_azure()
-        elif self.config.provider == "hf":
-            self._init_hf()
         else:
             # OpenAI or Custom (both use OpenAI client)
             self._init_openai()
-
-    def _init_hf(self):
-        """Initialize a local Hugging Face generation model."""
-        import torch
-        from transformers import AutoTokenizer, AutoModelForCausalLM
-
-        model_name = _resolve_local_model_path(self.config.model or "Qwen/Qwen2.5-7B-Instruct")
-        is_local_path = os.path.exists(model_name) or os.path.isdir(model_name)
-        offline_mode = not ("/" in model_name and not is_local_path)
-
-        try:
-            self._tokenizer = AutoTokenizer.from_pretrained(model_name, local_files_only=offline_mode)
-        except OSError as exc:
-            raise RuntimeError(
-                f"Could not load Hugging Face model '{self.config.model}'. Please either cache it locally or use a provider other than 'hf'."
-            ) from exc
-        if self._tokenizer.pad_token is None:
-            self._tokenizer.pad_token = self._tokenizer.eos_token
-
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        torch_dtype = torch.bfloat16 if device == "cuda" else torch.float32
-
-        try:
-            if device == "cuda":
-                self._model = AutoModelForCausalLM.from_pretrained(
-                    model_name,
-                    torch_dtype=torch_dtype,
-                    device_map="auto",
-                    low_cpu_mem_usage=True,
-                    local_files_only=offline_mode,
-                )
-            else:
-                self._model = AutoModelForCausalLM.from_pretrained(
-                    model_name,
-                    torch_dtype=torch_dtype,
-                    device_map=None,
-                    low_cpu_mem_usage=True,
-                    local_files_only=offline_mode,
-                )
-                self._model = self._model.to(device)
-        except RuntimeError as e:
-            if device == "cuda" and "out of memory" in str(e).lower():
-                print("[Warning] CUDA OOM while loading local HF model; retrying on CPU.")
-                self._model = AutoModelForCausalLM.from_pretrained(
-                    model_name,
-                    torch_dtype=torch.float32,
-                    device_map=None,
-                    low_cpu_mem_usage=True,
-                    local_files_only=offline_mode,
-                )
-                self._model = self._model.to("cpu")
-                device = "cpu"
-            else:
-                raise
-
-        self._model.eval()
-        self._device = torch.device(device)
-
+    
     def _init_openai(self):
         """Initialize OpenAI or Custom API client"""
         from openai import OpenAI
@@ -245,9 +145,6 @@ class LLMClient:
         Returns:
             Response text
         """
-        if self.config.provider == "hf":
-            return self._chat_hf(user_message, system_message, temperature, max_tokens)
-
         response = self._client.chat.completions.create(
             model=self._model,
             messages=[
@@ -258,64 +155,6 @@ class LLMClient:
             max_tokens=max_tokens if max_tokens is not None else self.config.max_tokens,
         )
         return response.choices[0].message.content or ""
-
-    def _chat_hf(
-        self,
-        user_message: str,
-        system_message: str = "You are a helpful assistant.",
-        temperature: float = None,
-        max_tokens: int = None,
-    ) -> str:
-        """Generate a response with a local Hugging Face model."""
-        import torch
-
-        messages = [
-            {"role": "system", "content": system_message},
-            {"role": "user", "content": user_message},
-        ]
-
-        prompt = self._tokenizer.apply_chat_template(
-            messages,
-            tokenize=False,
-            add_generation_prompt=True,
-        )
-        inputs = self._tokenizer(prompt, return_tensors="pt")
-        inputs = {k: v.to(self._device) for k, v in inputs.items()}
-
-        gen_temperature = temperature if temperature is not None else self.config.temperature
-        gen_max_tokens = max_tokens if max_tokens is not None else self.config.max_tokens
-
-        try:
-            with torch.no_grad():
-                generated = self._model.generate(
-                    **inputs,
-                    max_new_tokens=gen_max_tokens,
-                    temperature=gen_temperature,
-                    do_sample=gen_temperature > 0,
-                    pad_token_id=self._tokenizer.eos_token_id,
-                )
-        except RuntimeError as e:
-            if self._device.type == "cuda" and "out of memory" in str(e).lower():
-                print("[Warning] CUDA OOM during local HF generation; retrying on CPU.")
-                self._model = self._model.to("cpu")
-                self._device = torch.device("cpu")
-                inputs = {k: v.to(self._device) for k, v in inputs.items()}
-                with torch.no_grad():
-                    generated = self._model.generate(
-                        **inputs,
-                        max_new_tokens=gen_max_tokens,
-                        temperature=gen_temperature,
-                        do_sample=gen_temperature > 0,
-                        pad_token_id=self._tokenizer.eos_token_id,
-                    )
-            else:
-                raise
-
-        generated_text = self._tokenizer.decode(
-            generated[0][inputs["input_ids"].shape[1]:],
-            skip_special_tokens=True,
-        )
-        return generated_text.strip()
     
     def chat_messages(
         self,
@@ -334,48 +173,6 @@ class LLMClient:
         Returns:
             Response text
         """
-        if self.config.provider == "hf":
-            prompt = self._tokenizer.apply_chat_template(
-                messages,
-                tokenize=False,
-                add_generation_prompt=True,
-            )
-            inputs = self._tokenizer(prompt, return_tensors="pt")
-            inputs = {k: v.to(self._device) for k, v in inputs.items()}
-            gen_temperature = temperature if temperature is not None else self.config.temperature
-            gen_max_tokens = max_tokens if max_tokens is not None else self.config.max_tokens
-
-            import torch
-            try:
-                with torch.no_grad():
-                    generated = self._model.generate(
-                        **inputs,
-                        max_new_tokens=gen_max_tokens,
-                        temperature=gen_temperature,
-                        do_sample=gen_temperature > 0,
-                        pad_token_id=self._tokenizer.eos_token_id,
-                    )
-            except RuntimeError as e:
-                if self._device.type == "cuda" and "out of memory" in str(e).lower():
-                    print("[Warning] CUDA OOM during local HF generation; retrying on CPU.")
-                    self._model = self._model.to("cpu")
-                    self._device = torch.device("cpu")
-                    inputs = {k: v.to(self._device) for k, v in inputs.items()}
-                    with torch.no_grad():
-                        generated = self._model.generate(
-                            **inputs,
-                            max_new_tokens=gen_max_tokens,
-                            temperature=gen_temperature,
-                            do_sample=gen_temperature > 0,
-                            pad_token_id=self._tokenizer.eos_token_id,
-                        )
-                else:
-                    raise
-            return self._tokenizer.decode(
-                generated[0][inputs["input_ids"].shape[1]:],
-                skip_special_tokens=True,
-            ).strip()
-
         response = self._client.chat.completions.create(
             model=self._model,
             messages=messages,
