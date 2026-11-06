@@ -494,7 +494,8 @@ class InceptionRAGAttacker:
                 return result
         print(f"✗")
         print(f"    Answer: {answer[:60]}..." if len(answer) > 60 else f"    Answer: {answer}")
-        
+
+        result["answer"] = answer
         return result
     
     def attack_batch(self, items: List[dict], output_path: Optional[Path] = None) -> List[Dict]:
