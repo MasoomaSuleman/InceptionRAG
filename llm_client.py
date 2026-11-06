@@ -144,7 +144,7 @@ class LLMClient:
         model_name = self.config.model
 
         print(f"Loading HuggingFace model: {model_name}")
-        print(f"Cache directory: {cache_dir}")
+        # print(f"Cache directory: {cache_dir}")
 
         # Download if needed
         self._tokenizer = AutoTokenizer.from_pretrained(
@@ -162,7 +162,7 @@ class LLMClient:
             self._model = AutoModelForCausalLM.from_pretrained(
                 model_name,
                 cache_dir=cache_dir,
-                torch_dtype=torch.bfloat16,
+                dtype=torch.bfloat16,
                 device_map="auto",
                 trust_remote_code=True,
             )

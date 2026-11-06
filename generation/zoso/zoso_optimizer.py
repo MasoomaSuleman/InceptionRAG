@@ -55,23 +55,23 @@ def _call_chat_completion(client, model_name: str, messages: List[Dict[str, str]
     raise TypeError(f"Unsupported client type for chat completion: {type(client).__name__}")
 
 
-def build_zoso_client(config: "ZOSOConfig", llm_config: Optional[LLMConfig] = None):
-    """Create a client for ZOSO, preferring the local HF backend when configured."""
-    if llm_config is not None and llm_config.provider == "hf":
-        return create_llm_client(llm_config)
+# def build_zoso_client(config: "ZOSOConfig", llm_config: Optional[LLMConfig] = None):
+#     """Create a client for ZOSO, preferring the local HF backend when configured."""
+#     if llm_config is not None and llm_config.provider == "hf":
+#         return create_llm_client(llm_config)
 
-    if config.api_key:
-        return OpenAI(base_url=config.api_base_url, api_key=config.api_key)
+#     if config.api_key:
+#         return OpenAI(base_url=config.api_base_url, api_key=config.api_key)
 
-    if llm_config is not None:
-        return create_llm_client(llm_config)
+#     if llm_config is not None:
+#         return create_llm_client(llm_config)
 
-    return create_llm_client(LLMConfig(
-        provider="hf",
-        api_key="",
-        api_base=config.api_base_url,
-        model=config.model_name,
-    ))
+#     return create_llm_client(LLMConfig(
+#         provider="hf",
+#         api_key="",
+#         api_base=config.api_base_url,
+#         model=config.model_name,
+#     ))
 
 
 # ============================================================================
@@ -122,11 +122,8 @@ class ZOSOConfig:
     use_retrieval: bool = True          # Whether to use retrieval (True = two-stage retrieval)
     retrieval_top_k: int = 10           # Final top-k selection (e.g., 8 clean + 2 poisoned)
     retrieval_first_k: int = 10         # First-stage retrieval count
-    
-    # API configuration
-    api_base_url: str = "https://api.openai.com/v1"
-    api_key: str = ""
-    model_name: str = "gpt-4o-mini"
+
+    llm_client: LLMClient = None
     
     # Output
     save_interval: int = 10
@@ -276,10 +273,15 @@ class DataManager:
     
     QUESTION_TYPES = ["TIME", "PERSON", "LOCATION", "QUANTITY", "IDENTITY"]
     
-    def __init__(self, data: List[dict], config: ZOSOConfig, client: LLMClient):
+    def __init__(
+        self,
+        data,
+        config,
+        llm_client: LLMClient,
+    ):
         self.all_data = data
         self.config = config
-        self.client = client
+        self.client = llm_client
         
         print(f"  Data: {len(self.all_data)} samples")
         
@@ -319,7 +321,7 @@ Output format (one per line):
             try:
                 content = _call_chat_completion(
                     self.client,
-                    self.config.model_name,
+                    self.client.config.model,
                     [{"role": "user", "content": prompt}],
                     temperature=0.0,
                     max_tokens=1024,
@@ -530,7 +532,7 @@ class RAGEvaluator:
         corpus_texts: List[str],
         contriever,
         contriever_tokenizer,
-        client=None,
+        llm_client: LLMClient
     ):
         self.data = golden_data
         self.config = config
@@ -543,8 +545,9 @@ class RAGEvaluator:
         self.device = next(contriever.parameters()).device
         
         # LLM client
-        self.client = client if client is not None else build_zoso_client(config)
-        
+        self.client = llm_client
+        self.model_name = llm_client.config.model
+
         print(f"  RAG Evaluator initialized with {len(self.data)} golden samples")
         print(f"  Corpus: {len(corpus_texts)} docs, Retrieval: first-{config.retrieval_first_k} -> top-{config.retrieval_top_k}")
     
@@ -665,7 +668,7 @@ class RAGEvaluator:
         
         content = _call_chat_completion(
             self.client,
-            self.config.model_name,
+            self.model_name,
             [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user}
@@ -738,6 +741,7 @@ class ZOSOOptimizer:
         corpus_texts: List[str],
         contriever,
         contriever_tokenizer,
+        llm_client: LLMClient,
     ):
         self.config = config
         self.pool = suffix_pool
@@ -756,7 +760,7 @@ class ZOSOOptimizer:
             corpus_texts,
             contriever,
             contriever_tokenizer,
-            client=getattr(data_manager, "client", None),
+            llm_client
         )
         
         # Proxy Network & GP
@@ -1003,10 +1007,15 @@ def main():
     args = parser.parse_args()
     
     # Config
-    config = ZOSOConfig(
+    llm_config = LLMConfig(
+        provider=args.provider,
         api_key=args.api_key,
-        api_base_url=args.api_base,
-        model_name=args.model,
+        api_base=args.api_base if args.provider != "hf" else "",
+        model=args.model,
+    )
+
+    config = ZOSOConfig(
+        llm_config=llm_config,
         anchor_rounds=args.anchor_rounds,
         bridge_rounds=args.bridge_rounds,
         init_exploration=args.init_exploration,
@@ -1014,14 +1023,7 @@ def main():
         golden_set_size=args.golden_size,
         retrieval_top_k=args.retrieval_top_k,
         retrieval_first_k=args.retrieval_first_k,
-    )
-
-    llm_config = LLMConfig(
-        provider=args.provider,
-        api_key=args.api_key,
-        api_base=args.api_base if args.provider != "hf" else "",
-        model=args.model,
-    )
+        )
     
     # Load data
     print("Loading data...")
@@ -1050,14 +1052,18 @@ def main():
     
     # Initialize DataManager (with semantic labeling)
     print("Initializing DataManager...")
-    client = build_zoso_client(config, llm_config)
-    data_mgr = DataManager(all_data, config, client)
+    data_mgr = DataManager(
+        all_data,
+        config,
+        llm_config,
+    )
     
     # Optimize
     optimizer = ZOSOOptimizer(
         config, pool, data_mgr,
         corpus_embs, corpus_texts,
         contriever, contriever_tokenizer,
+        llm_config
     )
     results = optimizer.optimize()
     

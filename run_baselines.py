@@ -4,8 +4,45 @@ import subprocess
 from pathlib import Path
 import os
 
+import argparse
+import subprocess
+from pathlib import Path
+import os
+
 CONFIG_FILE = Path("config.yaml")
 BASELINE_FILE = Path("baseline_configs.txt")
+
+parser = argparse.ArgumentParser(
+    description="Run all baseline attack configurations."
+)
+
+parser.add_argument(
+    "--data-root",
+    required=True,
+    help="Root directory containing the InceptionRAG data."
+)
+
+parser.add_argument(
+    "--output-dir",
+    required=True,
+    help="Directory where result JSON files will be written."
+)
+
+parser.add_argument(
+    "--dataset",
+    required=True,
+    choices=["nq", "hotpotqa", "msmarco"],
+    help="Dataset name."
+)
+
+parser.add_argument(
+    "--limit",
+    type=int,
+    default=3,
+    help="Number of queries to evaluate."
+)
+
+args = parser.parse_args()
 
 # ---------------------------------------------------------------------
 # Read the original config.yaml
@@ -66,9 +103,10 @@ for block in blocks:
         f.write(attack_yaml)
         f.write("\n")
 
-    output_file = (
-        f"/tmp/$USER/InceptionRAG_data/results/baselines/{output_name}.json"
-    )
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    output_file = output_dir / f"{output_name}.json"
 
     cmd = [
         "python",
@@ -76,20 +114,20 @@ for block in blocks:
         "--config",
         str(CONFIG_FILE),
         "--dataset",
-        "nq",
+        args.dataset,
         "--limit",
-        "100",
+        str(args.limit),
         "--data-root",
-        f"/tmp/{os.environ['USER']}/InceptionRAG_data",
+        args.data_root,
         "--output",
-        output_file,
+        str(output_file),
         "--add-gt",
         "--llm-judge",
     ]
 
     if first:
-        cmd.append("--stage1")
-        first = False
+       cmd.append("--stage1")
+       first = False
 
     print("=" * 80)
     print("Running:", output_name)

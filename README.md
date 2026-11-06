@@ -48,7 +48,7 @@ mkdir -p \
 
 ## Run Code
 
-```
+```bash
 # 2. Download datasets and build corpus index
 # Dataset options are "nq", "hotpotqa", "msmarco"
 python data/download_datasets.py --dataset nq --output-dir /tmp/$USER/InceptionRAG_data

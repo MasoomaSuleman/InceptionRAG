@@ -19,6 +19,9 @@ if __package__ in (None, ""):
 
 from .llm_client import LLMConfig, LLMClient, create_llm_client
 
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning)
+
 
 # ============================================================================
 # Configuration
@@ -1022,12 +1025,15 @@ def main():
         from .generation.zoso.zoso_optimizer import ZOSOConfig, ZOSOOptimizer, SuffixPool as ZOSOSuffixPool, DataManager
         from openai import OpenAI
         from sentence_transformers import SentenceTransformer
+
+        client = create_llm_client(llm_config)
         
         # ZOSO config
         zoso_config = ZOSOConfig(
-            api_key=llm_config.api_key,
-            api_base_url=llm_config.api_base or "https://api.openai.com/v1",
-            model_name=llm_config.model,
+            llm_client=client,
+            # api_key=llm_config.api_key,
+            # api_base_url=llm_config.api_base or "https://api.openai.com/v1",
+            # model_name=llm_config.model,
             anchor_rounds=args.zoso_anchor_rounds,
             bridge_rounds=args.zoso_bridge_rounds,
             golden_set_size=args.zoso_golden_size,
@@ -1043,7 +1049,6 @@ def main():
         embedder = SentenceTransformer('all-mpnet-base-v2')
         zoso_pool = ZOSOSuffixPool.from_file(Path(args.suffix_pool), embedder)
         
-        client = OpenAI(base_url=zoso_config.api_base_url, api_key=zoso_config.api_key)
         data_mgr = DataManager(all_data, zoso_config, client)
         
         # Run optimization
@@ -1051,6 +1056,7 @@ def main():
             zoso_config, zoso_pool, data_mgr,
             corpus_embs, corpus_texts,
             contriever, contriever_tokenizer,
+            client
         )
         zoso_results = optimizer.optimize()
         
