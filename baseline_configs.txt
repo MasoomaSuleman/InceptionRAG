@@ -1,0 +1,54 @@
+attack-20
+attack:	
+  retrieval_top_k: 20
+  retrieval_first_k: 20
+  cttft_neighbor_k: 10
+  noise_injection: true
+  dual_injection: false
+  query_prefix: false
+  
+attack-20-dual
+attack:	
+  retrieval_top_k: 20
+  retrieval_first_k: 20
+  cttft_neighbor_k: 10
+  noise_injection: true
+  dual_injection: true
+  query_prefix: false
+  
+attack-20-dual-query
+attack:	
+  retrieval_top_k: 20
+  retrieval_first_k: 20
+  cttft_neighbor_k: 10
+  noise_injection: true
+  dual_injection: true
+  query_prefix: true
+  
+attack-50
+attack: 
+  retrieval_top_k: 50
+  retrieval_first_k: 20
+  cttft_neighbor_k: 10
+  noise_injection: true
+  dual_injection: false
+  query_prefix: false
+  
+attack-50-dual
+attack:	
+  retrieval_top_k: 50
+  retrieval_first_k: 20
+  cttft_neighbor_k: 10
+  noise_injection: true
+  dual_injection: true
+  query_prefix: false
+  
+attack-50-dual-query
+attack:	
+  retrieval_top_k: 50
+  retrieval_first_k: 20
+  cttft_neighbor_k: 10
+  noise_injection: true
+  dual_injection: true
+  query_prefix: true
+  

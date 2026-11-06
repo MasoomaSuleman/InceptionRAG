@@ -1,40 +1,14 @@
-"""
-InceptionRAG - Full Attack Pipeline
-
-Stage 1: Generative Manipulation via Optimized Logic Traps
-    - Logic Trap Generation (Proxy Entity + Attribute/Bridge Documents)
-    - ZOSO Suffix Optimization (Anchor/Bridge suffixes)
-
-Stage 2: Retrieval Hijacking via Dual-Ended Injection
-    - Subject Header (query prefix)
-    - Footer Metadata (keyword tags)
-    - Two-Stage Retrieval
-
-Stage 3: Polymorphic Obfuscation and Cascade Test-Time Fine-Tuning (CTTFT)
-    - Polymorphic Noise Injection (randomized ID + timestamp wrapper)
-    - CTTFT: L1 (global) → L2 (anchor sweep) → L3 (bridge sweep)
-
-Usage:
-    python run_attack.py \
-        --api-key "YOUR_API_KEY" \
-        --data data/nq_with_ad.json \
-        --suffix-pool data/suffix_pool/suffix_candidates.json \
-        --corpus-embs data/corpus/nq_corpus_embs.npy \
-        --corpus-texts data/corpus/nq_corpus_texts.json \
-        --output results/attack_results.json
-"""
-
 import json
-import os
 import random
+import os
 import re
 import sys
 import time
+import numpy as np
+import torch
 from pathlib import Path
-from typing import List, Dict, Tuple, Optional, Set, Any
+from typing import List, Dict, Tuple, Optional, Set
 from dataclasses import dataclass, field
-
-import yaml
 
 if __package__ in (None, ""):
     project_root = str(Path(__file__).resolve().parent.parent)
@@ -42,8 +16,6 @@ if __package__ in (None, ""):
         sys.path.insert(0, project_root)
     __package__ = "InceptionRAG"
 
-import numpy as np
-import torch
 from .llm_client import LLMConfig, LLMClient, create_llm_client
 
 
@@ -69,7 +41,6 @@ class InceptionRAGConfig:
     
     # Dual-Ended Injection
     dual_injection: bool = True
-    query_prefix: bool = True
     footer_separator: str = "\n\n---\n"
     
     # Success evaluation
@@ -77,41 +48,12 @@ class InceptionRAGConfig:
     
     # Skip retrieval (use poisoned docs directly as context)
     skip_retrieval: bool = False
-
-    # Reranking after retrieval
-    use_reranker: bool = False
-    reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
-    rerank_top_k: Optional[int] = None
     
     # HODOR Defense (Heterogeneous Orthogonal Documents to Obstruct Reasoning)
     use_hodor: bool = False             # Enable HODOR defense
     hodor_model: str = "gemini-2.0-flash"  # Model for HODOR voting
 
     llm_judge: bool = False
-
-
-def load_attack_config_from_yaml(path: str) -> Dict[str, Any]:
-    """Load attack settings from YAML config while keeping values optional."""
-    if not path:
-        return {}
-
-    with open(path, "r") as f:
-        data = yaml.safe_load(f) or {}
-
-    attack_cfg = data.get("attack", {}) or {}
-    return {
-        "retrieval_top_k": attack_cfg.get("retrieval_top_k", 10),
-        "retrieval_first_k": attack_cfg.get("retrieval_first_k", 20),
-        "cttft_neighbor_k": attack_cfg.get("cttft_neighbor_k", 10),
-        "noise_injection": attack_cfg.get("noise_injection", True),
-        "dual_injection": attack_cfg.get("dual_injection", True),
-        "query_prefix": attack_cfg.get("query_prefix", True),
-        "use_reranker": attack_cfg.get("use_reranker", False),
-        "reranker_model": attack_cfg.get("reranker_model", "cross-encoder/ms-marco-MiniLM-L-6-v2"),
-        "rerank_top_k": attack_cfg.get("rerank_top_k"),
-        "use_hodor": attack_cfg.get("use_hodor", False),
-        "hodor_model": attack_cfg.get("hodor_model", "gemini-2.0-flash"),
-    }
 
 
 # ============================================================================
@@ -135,7 +77,6 @@ def inject_polymorphic_noise(suffix: str, enable: bool = True) -> str:
     random_id = f"x{random.randint(0, 0xFFFF):04X}"
     timestamp = f"T+{random.uniform(0, 1):.2f}s"
     return f"[{random_id} | {suffix} | {timestamp}]"
-
 
 # ============================================================================
 # Dual-Ended Injection (Stage 2)
@@ -178,72 +119,20 @@ def inject_dual_ended(text: str, query: str, config: InceptionRAGConfig) -> str:
     """
     Dual-Ended Injection (aligned with main_attack.py _inject_retrieval_prefix)
     
-    Format when enabled:
-      {query}\n\n{toxic_content}\n\n---\n(Reference keywords: {keywords})
+    Format: {query}\n\n{toxic_content}\n\n---\n(Reference keywords: {keywords})
     
-    - Optional prefix: full query (improves semantic similarity)
+    - Prefix: full query (improves semantic similarity)
     - Suffix: extracted keywords (metadata spoofing)
     """
     if not config.dual_injection:
         return text
-
+    
     keywords = extract_keywords(query)
     template = random.choice(RETRIEVAL_TEMPLATES)
     footer = template.format(keywords=keywords)
-
-    if not getattr(config, "query_prefix", True):
-        return f"{text}{config.footer_separator}{footer}"
-
+    
     # Fully aligned with main_attack.py: query prefix + original text + separator + keyword suffix
     return f"{query}\n\n{text}{config.footer_separator}{footer}"
-
-
-# ============================================================================
-# Passage Re-ranker
-# ============================================================================
-
-class PassageReranker:
-    """Real cross-encoder reranker that checks the local HF cache first and downloads only if needed."""
-
-    def __init__(self, model_name: str = "cross-encoder/ms-marco-MiniLM-L-6-v2", top_k: Optional[int] = None):
-        self.model_name = model_name
-        self.top_k = top_k
-        self.cross_encoder = None
-        self._init_model()
-
-    def _init_model(self):
-        try:
-            from huggingface_hub import try_to_load_from_cache, snapshot_download
-            from sentence_transformers import CrossEncoder
-
-            hf_cache = os.environ.get("HF_HOME") or os.environ.get("TRANSFORMERS_CACHE") or "/tmp/masoo20/hf-cache"
-            os.makedirs(hf_cache, exist_ok=True)
-
-            cache_hit = try_to_load_from_cache(
-                repo_id=self.model_name,
-                filename="config.json",
-                cache_dir=hf_cache,
-            )
-            if cache_hit is None:
-                snapshot_download(repo_id=self.model_name, cache_dir=hf_cache)
-
-            self.cross_encoder = CrossEncoder(self.model_name)
-        except Exception:
-            self.cross_encoder = None
-
-    def rerank(self, query: str, passages: List[str], base_scores: Optional[np.ndarray] = None) -> List[str]:
-        if not passages or self.cross_encoder is None:
-            return passages
-
-        pairs = [(query, passage) for passage in passages]
-        try:
-            scores = self.cross_encoder.predict(pairs)
-            ranking = sorted(range(len(passages)), key=lambda i: float(scores[i]), reverse=True)
-            reranked = [passages[i] for i in ranking]
-            return reranked[: self.top_k] if self.top_k is not None else reranked
-        except Exception:
-            return passages
-
 
 # ============================================================================
 # Two-Stage Retrieval
@@ -259,14 +148,12 @@ class TwoStageRetriever:
         contriever,
         contriever_tokenizer,
         config: InceptionRAGConfig,
-        reranker: Optional[PassageReranker] = None,
     ):
         self.corpus_texts = corpus_texts
         self.corpus_embs = corpus_embs
         self.contriever = contriever
         self.contriever_tokenizer = contriever_tokenizer
         self.config = config
-        self.reranker = reranker
         self.device = next(contriever.parameters()).device
     
     def _encode(self, text: str) -> np.ndarray:
@@ -279,76 +166,30 @@ class TwoStageRetriever:
             emb = self.contriever(**inputs).last_hidden_state.mean(dim=1).cpu().numpy()[0]
         return emb / (np.linalg.norm(emb) + 1e-8)
     
-    def retrieve(
-        self,
-        question: str,
-        poisoned_texts: List[str]
-    ) -> Tuple[List[str], int]:
+    def retrieve(self, question: str, poisoned_texts: List[str]) -> Tuple[List[str], int]:
         """
         Two-stage retrieval:
-        Stage 1: Retrieve first_k documents from the original corpus.
-        Stage 2: Merge original and poisoned passages, then rank candidates.
+        Stage 1: Retrieve first_k from corpus
+        Stage 2: Merge with poisoned, re-rank, select top_k
         """
-
         query_emb = self._encode(question)
-
-        # Stage 1: Retrieve documents from the original corpus
+        
+        # Stage 1
         corpus_scores = self.corpus_embs @ query_emb
-
-        top_indices = np.argsort(corpus_scores)[::-1][
-            :self.config.retrieval_first_k
-        ]
-
-        # Stage 2: Combine original and poisoned documents
+        top_indices = np.argsort(corpus_scores)[::-1][:self.config.retrieval_first_k]
+        
+        # Stage 2
         num_corpus = len(top_indices)
-
-        candidate_texts = (
-            [self.corpus_texts[i] for i in top_indices]
-            + poisoned_texts
-        )
-
-        candidate_embs = np.array([
-            self._encode(text) for text in candidate_texts
-        ])
-
+        candidate_texts = [self.corpus_texts[i] for i in top_indices] + poisoned_texts
+        
+        candidate_embs = np.array([self._encode(t) for t in candidate_texts])
         candidate_scores = candidate_embs @ query_emb
-
-        # Option A: Cross-encoder reranking
-        if self.reranker is not None:
-
-            ranked_texts = self.reranker.rerank(
-                question,
-                candidate_texts,
-                candidate_scores
-            )
-
-            final_texts = ranked_texts[:self.config.retrieval_top_k]
-
-            adv_count = sum(
-                1 for text in final_texts
-                if text in poisoned_texts
-            )
-
-        # Option B: Contriever similarity ranking (no cross-encoder)
-        else:
-
-            final_indices = np.argsort(candidate_scores)[::-1][
-                :self.config.retrieval_top_k
-            ]
-
-            final_texts = [
-                candidate_texts[i] for i in final_indices
-            ]
-
-            # Poisoned documents were appended after the corpus documents
-            adv_count = sum(
-                1 for i in final_indices if i >= num_corpus
-            )
-
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-
-        return final_texts, adv_count
+        
+        final_indices = np.argsort(candidate_scores)[::-1][:self.config.retrieval_top_k]
+        adv_count = sum(1 for idx in final_indices if idx >= num_corpus)
+        
+        torch.cuda.empty_cache()
+        return [candidate_texts[i] for i in final_indices], adv_count
 
 # ============================================================================
 # Suffix Pool
@@ -858,114 +699,25 @@ class InceptionRAGAttacker:
 # CLI Entry Point
 # ============================================================================
 
-def _sanitize_model_dir(model_name: str) -> str:
-    """Normalize a model name into a safe folder name."""
-    sanitized = re.sub(r"[^A-Za-z0-9._-]+", "-", model_name or "default-model").strip("-_.")
-    return sanitized or "default-model"
-
-
-def _resolve_model_output_path(path_str: str, model_name: str, suffix_name: str = "") -> Path:
-    """Place results under results/<model>/ while preserving the file name and suffix.
-
-    If the input path already represents a final output like
-    "hotpotqa_attack_100_with_reranker.json", we strip the reranker-related suffix
-    before adding the stage-specific suffix so the artifact names remain stable:
-    "hotpotqa_attack_100_with_ad.json" and "hotpotqa_attack_100_zoso.json".
-    """
-    path = Path(path_str)
-    model_dir = _sanitize_model_dir(model_name)
-
-    if model_dir in path.parts:
-        final_path = path
-    else:
-        final_path = path.parent / model_dir / path.name
-
-    if suffix_name:
-        base_stem = final_path.stem
-        for strip_suffix in ("_with_reranker", "_with_hodor", "_with_ad", "_zoso"):
-            if base_stem.endswith(strip_suffix):
-                base_stem = base_stem[: -len(strip_suffix)]
-                break
-        final_path = final_path.with_name(f"{base_stem}{suffix_name}{final_path.suffix}")
-
-    return final_path
-
-
-def _append_output_suffix(path_str: str, suffix_name: str, model_name: Optional[str] = None) -> Path:
-    """Return a path like 'results.json' -> 'results_suffix.json' inside results/<model>/ if provided."""
-    model_name = model_name or "default-model"
-    return _resolve_model_output_path(path_str, model_name, suffix_name)
-
-
-def _candidate_stage_artifact_paths(path_str: str, model_name: str, suffix_name: str = "") -> List[Path]:
-    """Return ordered candidate paths for stage artifacts, including legacy unscoped output paths.
-
-    The attack pipeline may try to reuse stage 1 outputs from either the final model-scoped
-    result directory or a legacy plain results folder. Keep both options so dataset-driven runs
-    can recover the correct checkpoint without crashing.
-    """
-    candidates: List[Path] = []
-    seen = set()
-
-    def add_candidate(path: Path) -> None:
-        if path not in seen:
-            candidates.append(path)
-            seen.add(path)
-
-    path = Path(path_str)
-    if path.name:
-        base_name = path.name
-        for strip_suffix in ("_with_reranker", "_with_hodor", "_with_ad", "_zoso"):
-            if base_name.endswith(strip_suffix):
-                base_name = base_name[: -len(strip_suffix)]
-                break
-        base_stem, ext = path.stem, path.suffix
-        if path.suffix:
-            base_stem = base_name[:-len(path.suffix)] if base_name.endswith(path.suffix) else base_stem
-        else:
-            base_stem = base_name
-        if suffix_name:
-            stage_name = f"{base_stem}{suffix_name}{ext}"
-        else:
-            stage_name = f"{base_stem}{ext}"
-    else:
-        stage_name = path.name
-
-    add_candidate(_resolve_model_output_path(path_str, model_name, suffix_name))
-
-    if model_name and _sanitize_model_dir(model_name) in path.parts:
-        legacy_parent = path.parent.parent if path.parent.name == _sanitize_model_dir(model_name) else path.parent
-    else:
-        legacy_parent = path.parent
-
-    add_candidate(legacy_parent / stage_name)
-
-    if path.parent.name == _sanitize_model_dir(model_name):
-        sibling_parent = path.parent.parent
-        add_candidate(sibling_parent / stage_name)
-
-    return candidates
-
-
 def main():
     import argparse
     from transformers import AutoModel, AutoTokenizer
     
     parser = argparse.ArgumentParser(description="InceptionRAG Attack Pipeline")
     
-    # LLM API options (supports OpenAI / Azure / Custom / HF)
+    # LLM API options (supports OpenAI / Azure / Custom)
     parser.add_argument("--config", type=str, default=None, help="Path to config.yaml")
     parser.add_argument("--api-key", type=str, default=None, help="API key (OpenAI/Azure/Custom)")
     parser.add_argument("--api-base", type=str, default=None, help="Custom API base URL")
-    parser.add_argument("--api-provider", type=str, default=None, choices=["openai", "azure", "custom", "hf"],
-                        help="API provider: openai, azure, custom, or hf (optional override)")
-    parser.add_argument("--model", type=str, default=None, help="Model name (optional override)")
+    parser.add_argument("--api-provider", type=str, default="openai", choices=["openai", "azure", "custom"],
+                        help="API provider: openai, azure, or custom")
+    parser.add_argument("--model", type=str, default="gpt-4o-mini", help="Model name")
     parser.add_argument("--azure-deployment", type=str, default=None, help="Azure deployment name")
     parser.add_argument("--azure-api-version", type=str, default="2024-02-15-preview", help="Azure API version")
     
     # Dataset options (can use --dataset for quick start, or specify paths manually)
     parser.add_argument("--data-root", type=Path, default=Path(f"/tmp/{os.environ['USER']}/InceptionRAG_data"),
-                        help="Root for data files")
+                            help="Root for data files")
     parser.add_argument("--dataset", type=str, default=None, choices=["nq", "hotpotqa", "msmarco"],
                         help="Dataset name (auto-loads from InceptionRAG/data/)")
     parser.add_argument("--data", type=str, default=None, help="Data JSON with ad_text (overrides --dataset)")
@@ -980,23 +732,12 @@ def main():
     parser.add_argument("--cttft-neighbor-k", type=int, default=10)
     parser.add_argument("--no-noise", action="store_true", help="Disable noise injection")
     parser.add_argument("--no-dual-injection", action="store_true", help="Disable dual-ended injection")
-    parser.add_argument("--query-prefix", dest="query_prefix", action="store_true", default=None,
-                        help="Prepend the original question before the adversarial document")
-    parser.add_argument("--no-query-prefix", dest="query_prefix", action="store_false",
-                        help="Do not prepend the original question before the adversarial document")
-    parser.add_argument("--reranker", action="store_true", help="Enable a reranker after retrieval before generation")
-    parser.add_argument("--reranker-model", type=str, default="cross-encoder/ms-marco-MiniLM-L-6-v2",
-                        help="Local cached reranker model or path; falls back to lexical overlap if unavailable")
-    parser.add_argument("--rerank-top-k", type=int, default=None,
-                        help="Keep at most this many passages after reranking; defaults to retrieval_top_k")
     
     # Pipeline control (default: full pipeline = Stage1 + Stage3)
     parser.add_argument("--stage1", action="store_true", help="Run Stage 1 (ADV generation + ZOSO)")
     parser.add_argument("--attack-only", action="store_true", help="Skip Stage 1, use existing ADV data and ZOSO results")
     parser.add_argument("--zoso-only", action="store_true", help="Skip ADV generation, only run ZOSO + Stage 3")
     parser.add_argument("--skip-attack", action="store_true", help="Only run Stage 1, skip Stage 3 attack")
-    parser.add_argument("--reuse-existing-stage1", action="store_true",
-                        help="If ADV and ZOSO artifacts already exist for this model/dataset/output, skip Stage 1 generation and reuse them.")
     
     # Stage 1 options
     parser.add_argument("--input-queries", type=str, default=None, help="Input queries file (JSONL or JSON)")
@@ -1010,80 +751,29 @@ def main():
 
     parser.add_argument("--add-gt", action="store_true", help="add ground truth information to ourput JSON file")
     parser.add_argument("--llm-judge", action="store_true", help="Use an llm as judge to get more accurate ASR")
+    
     args = parser.parse_args()
-
-    # Preserve the exact YAML configuration for the output JSON
-    config_yaml_text = None
-    if args.config:
-        with open(args.config, "r", encoding="utf-8") as f:
-            config_yaml_text = f.read()
     
     # Build LLM config
-    attack_cfg = load_attack_config_from_yaml(args.config) if args.config else {}
-    if args.query_prefix is None:
-        args.query_prefix = bool(attack_cfg.get("query_prefix", True)) if args.config else True
-
     if args.config:
-        # Load from config file, then overlay only explicit CLI overrides
+        # Load from config file
         llm_config = LLMConfig.from_yaml(args.config)
-        if args.api_key:
-            llm_config.api_key = args.api_key
-        if args.api_base:
-            llm_config.api_base = args.api_base
-        if args.api_provider is not None:
-            llm_config.provider = args.api_provider
-        if args.azure_api_version:
-            llm_config.api_version = args.azure_api_version
-        if args.azure_deployment:
-            llm_config.deployment = args.azure_deployment
-        if args.model is not None:
-            llm_config.model = args.model
-
-        if "retrieval_top_k" in attack_cfg and args.retrieval_top_k == 10:
-            args.retrieval_top_k = attack_cfg["retrieval_top_k"]
-        if "retrieval_first_k" in attack_cfg and args.retrieval_first_k == 20:
-            args.retrieval_first_k = attack_cfg["retrieval_first_k"]
-        if "cttft_neighbor_k" in attack_cfg and args.cttft_neighbor_k == 10:
-            args.cttft_neighbor_k = attack_cfg["cttft_neighbor_k"]
-        if "noise_injection" in attack_cfg and not args.no_noise:
-            args.no_noise = not bool(attack_cfg["noise_injection"])
-        if "dual_injection" in attack_cfg and not args.no_dual_injection:
-            args.no_dual_injection = not bool(attack_cfg["dual_injection"])
-        if "query_prefix" in attack_cfg and args.query_prefix is None:
-            args.query_prefix = bool(attack_cfg["query_prefix"])
-        if "use_reranker" in attack_cfg and not args.reranker:
-            args.reranker = bool(attack_cfg["use_reranker"])
-        if "reranker_model" in attack_cfg and args.reranker_model == "cross-encoder/ms-marco-MiniLM-L-6-v2":
-            args.reranker_model = attack_cfg["reranker_model"]
-        if args.rerank_top_k is None and attack_cfg.get("rerank_top_k") is not None:
-            args.rerank_top_k = attack_cfg["rerank_top_k"]
-        if "use_hodor" in attack_cfg and not args.hodor:
-            args.hodor = bool(attack_cfg["use_hodor"])
-        if "hodor_model" in attack_cfg and args.hodor_model == "gemini-2.0-flash":
-            args.hodor_model = attack_cfg["hodor_model"]
     else:
-        # Build from CLI args, but keep provider/model default behavior sane when not provided
+        # Build from CLI args
         if not args.api_key:
             args.api_key = os.getenv("OPENAI_API_KEY", "")
-            if not args.api_key and (args.api_provider != "hf"):
+            if not args.api_key:
                 print("Error: --api-key required or set OPENAI_API_KEY env var")
                 return
-
+        
         llm_config = LLMConfig(
-            provider=args.api_provider or "openai",
-            api_key=args.api_key or "",
+            provider=args.api_provider,
+            api_key=args.api_key,
             api_base=args.api_base or "",
             api_version=args.azure_api_version,
             deployment=args.azure_deployment or "",
-            model=args.model or "gpt-4o-mini",
+            model=args.model,
         )
-
-    if not llm_config.api_key and llm_config.provider != "hf":
-        llm_config.api_key = os.getenv("OPENAI_API_KEY", "") or os.getenv("AZURE_OPENAI_API_KEY", "")
-
-    if llm_config.provider != "hf" and not llm_config.api_key:
-        print("Error: ZOSO optimization requires an OpenAI-compatible API key. Set llm.api_key in config.yaml, pass --api-key, or export OPENAI_API_KEY.")
-        return
     
     # Full config
     config = InceptionRAGConfig(
@@ -1093,10 +783,6 @@ def main():
         cttft_neighbor_k=args.cttft_neighbor_k,
         noise_injection=not args.no_noise,
         dual_injection=not args.no_dual_injection,
-        query_prefix=args.query_prefix,
-        use_reranker=args.reranker,
-        reranker_model=args.reranker_model,
-        rerank_top_k=args.rerank_top_k if args.rerank_top_k is not None else args.retrieval_top_k,
         use_hodor=args.hodor,
         hodor_model=args.hodor_model,
         llm_judge=args.llm_judge,
@@ -1110,206 +796,169 @@ def main():
     BASE_DIR = Path(__file__).resolve().parent.parent
     DATA_ROOT = args.data_root
     
-    # Reuse/generated-artifact checkpoint handling before running Stage 1 work.
-    should_run_stage1 = True
-    # if args.reuse_existing_stage1 and args.output:
-    candidate_adv = _resolve_model_output_path(args.output, llm_config.model, "_with_ad")
-    candidate_zoso = _resolve_model_output_path(args.output, llm_config.model, "_zoso")
-    
-    if candidate_adv.exists() and candidate_zoso.exists():
-        args.data = str(candidate_adv)
-        args.zoso_results = str(candidate_zoso)
-        should_run_stage1 = False
-        print(f"  Reusing existing ADV artifact: {args.data}")
-        print(f"  Reusing existing ZOSO artifact: {args.zoso_results}")
-
-    ds = args.dataset.lower()
-    limit = args.limit or 100
-    # Compute range in batches of 100
-    start_idx = 0
-    end_idx = limit
-    candidate_adv = DATA_ROOT / f"adv/{ds}/{ds}_{start_idx}-{end_idx}_with_ad.json"
-    candidate_zoso = _resolve_model_output_path(args.output, llm_config.model, "_zoso")
-    
-    if candidate_adv.exists():
-        args.data = str(candidate_adv)
-        should_run_stage1 = False
-        print(f"  Reusing existing ADV artifact: {args.data}")
-
     # ========== Stage 1: Generate Logic Traps + ZOSO (if --stage1 or --zoso-only) ==========
     if args.stage1 or args.zoso_only:
-        if should_run_stage1:
-            print("\n" + "=" * 60)
-            print("Stage 1: Generative Manipulation via Optimized Logic Traps")
-            print("=" * 60)
-
-            # --zoso-only: skip ADV generation and use existing data
-            if args.zoso_only:
-                print("\n  [--zoso-only] Skipping ADV generation, using existing data...")
-                # Directly proceed to the data-loading stage
-            else:
-                from .generation.logic_trap import LogicTrapGenerator
-
-            # Determine input file (using data under InceptionRAG/data/)
-            if not args.zoso_only:
-                if args.input_queries:
-                    input_path = Path(args.input_queries)
-                elif args.dataset:
-                    ds = args.dataset.lower()
-                    # Data source priority: InceptionRAG/data/datasets/{ds}/queries.jsonl
-                    raw_queries = DATA_ROOT / f"datasets/{ds}/queries.jsonl"
-                    
-                    if not raw_queries.exists():
-                        print(f"Error: Dataset not found at {raw_queries}")
-                        print(f"Please run: bash InceptionRAG/scripts/download_all_datasets.sh")
-                        return
-                    
-                    input_path = raw_queries
-                else:
-                    print("Error: --stage1 requires --input-queries or --dataset")
-                    return
-                
-                if not input_path.exists():
-                    print(f"Error: Input file not found: {input_path}")
-                    return
-            
-            # Load input (skip if --zoso-only)
-            if not args.zoso_only:
-                print(f"\n  [Stage 1.1] Loading queries from: {input_path}")
-                with open(input_path, "r") as f:
-                    if input_path.suffix == ".jsonl":
-                        raw_items = [json.loads(line) for line in f]
-                    else:
-                        raw_items = json.load(f)
-                
-                if args.limit:
-                    raw_items = raw_items[:args.limit]
-                
-                print(f"  Loaded: {len(raw_items)} queries")
-                
-                # Check whether incorrect answers need to be generated
-                needs_incorrect_answer = not raw_items[0].get("incorrect answer") and not raw_items[0].get("target_answer")
-                
-                # Prepare items for generation
-                gen_items = []
-                llm = create_llm_client(llm_config)
-            
-                for i, item in enumerate(raw_items):
-                    question = item.get("question") or item.get("text", "")
-                    target = item.get("incorrect answer") or item.get("target_answer", "")
-                    
-                    # If incorrect answer is missing, generate one with LLM
-                    if not target and needs_incorrect_answer:
-                        if i == 0:
-                            print(f"\n  [Stage 1.2] Generating incorrect answers...")
-                        
-                        try:
-                            resp = llm.chat(
-                                user_message=f"Question: {question}\n\nGenerate a plausible but INCORRECT answer to this question. Just output the incorrect answer, nothing else.",
-                                system_message="You are a helpful assistant that generates plausible but incorrect answers for testing purposes.",
-                                temperature=0.7,
-                                max_tokens=50,
-                            )
-                            target = resp.strip()
-                            print(f"    [{i+1}/{len(raw_items)}] Q: {question[:40]}... -> Incorrect: {target[:30]}...")
-                        except Exception as e:
-                            target = "Unknown"
-                            print(f"    [{i+1}] Error: {e}")
-                    
-                    gen_items.append({
-                        "id": item.get("id") or item.get("_id", ""),
-                        "question": question,
-                        "target_answer": target,
-                    })
-
-                    if args.add_gt:
-                        metadata = item.get("metadata") or {}
-
-                        ground_truth = (
-                            item.get("ground_truth")
-                            or item.get("answer")
-                            or metadata.get("answer")
-                            or item.get("answers")
-                            or metadata.get("answers")
-                        )
-
-                        gen_items[-1]["ground_truth"] = ground_truth
-            
-            if not args.zoso_only:
-                print(f"\n  [Stage 1.3] Generating Logic Traps (Attribute + Bridge Documents)...")
-                print(f"  Items: {len(gen_items)}")
-                
-                # Generate Logic Traps
-                generator = LogicTrapGenerator(llm_config=llm_config)
-                
-                # Output path: InceptionRAG/data/adv/{dataset}/{dataset}_0-{limit}_with_ad.json
-                if args.dataset:
-                    ds = args.dataset.lower()
-                    limit = args.limit or 100
-                    # Compute range in batches of 100
-                    start_idx = 0
-                    end_idx = limit
-                    gen_output = DATA_ROOT / f"adv/{ds}/{ds}_{start_idx}-{end_idx}_with_ad.json"
-                else:
-                    gen_output = _append_output_suffix(args.output, "_with_ad", llm_config.model)
-                
-                gen_output.parent.mkdir(parents=True, exist_ok=True)
-                results = generator.generate_batch(gen_items, gen_output)
-                
-                print(f"\n  ✓ Stage 1.1-1.3 Complete: Generated {len(results)} Logic Traps")
-                print(f"  Saved to: {gen_output}")
-                
-                # Update args.data to use generated file
-                args.data = str(gen_output)
+        print("\n" + "=" * 60)
+        print("Stage 1: Generative Manipulation via Optimized Logic Traps")
+        print("=" * 60)
+        
+        # --zoso-only: skip ADV generation and use existing data
+        if args.zoso_only:
+            print("\n  [--zoso-only] Skipping ADV generation, using existing data...")
+            # Directly proceed to the data-loading stage
         else:
-            print("\n" + "=" * 60)
-            print("Stage 1 reuse checkpoint: skipping generation and ZOSO optimization.")
-            print("=" * 60)
+            from .generation.logic_trap import LogicTrapGenerator
+        
+        # Determine input file (using data under InceptionRAG/data/)
+        if not args.zoso_only:
+            if args.input_queries:
+                input_path = Path(args.input_queries)
+            elif args.dataset:
+                ds = args.dataset.lower()
+                # Data source priority: InceptionRAG/data/datasets/{ds}/queries.jsonl
+                raw_queries = DATA_ROOT / f"datasets/{ds}/queries.jsonl"
+                
+                if not raw_queries.exists():
+                    print(f"Error: Dataset not found at {raw_queries}")
+                    print(f"Please run: bash InceptionRAG/scripts/download_all_datasets.sh")
+                    return
+                
+                input_path = raw_queries
+            else:
+                print("Error: --stage1 requires --input-queries or --dataset")
+                return
+            
+            if not input_path.exists():
+                print(f"Error: Input file not found: {input_path}")
+                return
+        
+        # Load input (skip if --zoso-only)
+        if not args.zoso_only:
+            print(f"\n  [Stage 1.1] Loading queries from: {input_path}")
+            with open(input_path, "r") as f:
+                if input_path.suffix == ".jsonl":
+                    raw_items = [json.loads(line) for line in f]
+                else:
+                    raw_items = json.load(f)
+            
+            if args.limit:
+                raw_items = raw_items[:args.limit]
+            
+            print(f"  Loaded: {len(raw_items)} queries")
+            
+            # Check whether incorrect answers need to be generated
+            needs_incorrect_answer = not raw_items[0].get("incorrect answer") and not raw_items[0].get("target_answer")
+            
+            # Prepare items for generation
+            gen_items = []
+            llm = create_llm_client(llm_config)
+        
+            for i, item in enumerate(raw_items):
+                question = item.get("question") or item.get("text", "")
+                target = item.get("incorrect answer") or item.get("target_answer", "")
+                
+                # If incorrect answer is missing, generate one with LLM
+                if not target and needs_incorrect_answer:
+                    if i == 0:
+                        print(f"\n  [Stage 1.2] Generating incorrect answers...")
+                    
+                    try:
+                        resp = llm.chat(
+                            user_message=f"Question: {question}\n\nGenerate a plausible but INCORRECT answer to this question. Just output the incorrect answer, nothing else.",
+                            system_message="You are a helpful assistant that generates plausible but incorrect answers for testing purposes.",
+                            temperature=0.7,
+                            max_tokens=50,
+                        )
+                        target = resp.strip()
+                        print(f"    [{i+1}/{len(raw_items)}] Q: {question[:40]}... -> Incorrect: {target[:30]}...")
+                    except Exception as e:
+                        target = "Unknown"
+                        print(f"    [{i+1}] Error: {e}")
+                
+                gen_items.append({
+                    "id": item.get("id") or item.get("_id", ""),
+                    "question": question,
+                    "target_answer": target,
+                })
+
+                if args.add_gt:
+                    metadata = item.get("metadata") or {}
+
+                    ground_truth = (
+                        item.get("ground_truth")
+                        or item.get("answer")
+                        or metadata.get("answer")
+                        or item.get("answers")
+                        or metadata.get("answers")
+                    )
+
+                    gen_items[-1]["ground_truth"] = ground_truth
+        
+        if not args.zoso_only:
+            print(f"\n  [Stage 1.3] Generating Logic Traps (Attribute + Bridge Documents)...")
+            print(f"  Items: {len(gen_items)}")
+            
+            # Generate Logic Traps
+            generator = LogicTrapGenerator(llm_config=llm_config)
+            
+            # Output path: InceptionRAG/data/adv/{dataset}/{dataset}_0-{limit}_with_ad.json
+            if args.dataset:
+                ds = args.dataset.lower()
+                limit = args.limit or 100
+                # Compute range in batches of 100
+                start_idx = 0
+                end_idx = limit
+                gen_output = DATA_ROOT / f"adv/{ds}/{ds}_{start_idx}-{end_idx}_with_ad.json"
+            else:
+                gen_output = Path(args.output).with_suffix("_with_ad.json")
+            
+            gen_output.parent.mkdir(parents=True, exist_ok=True)
+            results = generator.generate_batch(gen_items, gen_output)
+            
+            print(f"\n  ✓ Stage 1.1-1.3 Complete: Generated {len(results)} Logic Traps")
+            print(f"  Saved to: {gen_output}")
+            
+            # Update args.data to use generated file
+            args.data = str(gen_output)
     
-    # Auto-resolve paths if --dataset is specified.
+    # Auto-resolve paths if --dataset is specified (all from InceptionRAG/data/)
     if args.dataset:
         ds = args.dataset.lower()
         model_folder = llm_config.model.replace(".", "-").replace(" ", "-")
         limit = args.limit or 100
-
+        
+        # Data paths (using InceptionRAG/data/)
         if not args.data:
-            adv_candidates = _candidate_stage_artifact_paths(args.output, llm_config.model, "_with_ad")
-            adv_candidates.extend([
-                DATA_ROOT / f"adv/{ds}/{ds}_0-{limit}_with_ad.json",
-                DATA_ROOT / f"adv/{ds}/{ds}_0-100_with_ad.json",
-            ])
-            adv_data = next((p for p in adv_candidates if p.exists()), None)
-            if adv_data is not None:
+            # Prioritize newly generated ADV data
+            adv_data = DATA_ROOT / f"adv/{ds}/{ds}_0-{limit}_with_ad.json"
+            if adv_data.exists():
                 args.data = str(adv_data)
             else:
-                print(f"Error: ADV data not found at any of: {adv_candidates}")
+                print(f"Error: ADV data not found at {adv_data}")
                 print(f"Please run with --generate first")
                 return
-
+        
         if not args.suffix_pool:
             args.suffix_pool = str(DATA_ROOT / "suffix_pool/suffix_candidates.json")
-
+        
         if not args.zoso_results:
-            zoso_candidates = _candidate_stage_artifact_paths(args.output, llm_config.model, "_zoso")
-            zoso_candidates.extend([
-                DATA_ROOT / f"suffix_pool/zoso_results/{model_folder}/{ds}_zoso_results.json",
-            ])
-            zoso_path = next((p for p in zoso_candidates if p.exists()), None)
-            if zoso_path is not None:
+            zoso_path = DATA_ROOT / f"suffix_pool/zoso_results/{model_folder}/{ds}_zoso_results.json"
+            if zoso_path.exists():
                 args.zoso_results = str(zoso_path)
-
+        
+        # Corpus cache (using InceptionRAG/data/corpus/)
         if not args.corpus_embs:
             args.corpus_embs = str(DATA_ROOT / f"corpus/{ds}_contriever_embs.npy")
         if not args.corpus_texts:
             args.corpus_texts = str(DATA_ROOT / f"corpus/{ds}_corpus_texts.json")
-
+        
         print(f"[Auto] Dataset: {ds}, Model: {model_folder}")
-
+    
     # Validate required paths
     if not args.data or not args.suffix_pool or not args.corpus_embs or not args.corpus_texts:
         print("Error: Must specify --dataset or provide all data paths manually")
         return
-
+    
     # Load data
     print("\n[1/5] Loading data...")
     with open(args.data, "r") as f:
@@ -1317,14 +966,14 @@ def main():
     if args.limit:
         all_data = all_data[:args.limit]
     print(f"  Samples: {len(all_data)} (from {args.data})")
-
+    
     # Load corpus
     print("\n[2/5] Loading corpus...")
     corpus_embs = np.load(args.corpus_embs)
     with open(args.corpus_texts, "r") as f:
         corpus_texts = json.load(f)
     print(f"  Corpus: {len(corpus_texts)} docs")
-
+    
     # Load Contriever
     print("\n[3/5] Loading Contriever...")
     contriever_tokenizer = AutoTokenizer.from_pretrained("facebook/contriever")
@@ -1332,332 +981,73 @@ def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     contriever = contriever.to(device)
     print(f"  Device: {device}")
-
+    
     # Load suffix pool
     print("\n[4/5] Loading suffix pool...")
     suffix_pool = SuffixPool(Path(args.suffix_pool))
-
+    
     # ========== Stage 1.4: ZOSO Suffix Optimization (if --stage1 or --zoso-only) ==========
     if args.stage1 or args.zoso_only:
-        if args.reuse_existing_stage1 and args.zoso_results and os.path.exists(args.zoso_results):
-            print(f"\n  [Stage 1.4] Reusing existing ZOSO results: {args.zoso_results}")
+        print("\n  [Stage 1.4] ZOSO Suffix Optimization...")
+        print("  " + "-" * 50)
+        
+        from .generation.zoso.zoso_optimizer import ZOSOConfig, ZOSOOptimizer, SuffixPool as ZOSOSuffixPool, DataManager
+        from openai import OpenAI
+        from sentence_transformers import SentenceTransformer
+        
+        # ZOSO config
+        zoso_config = ZOSOConfig(
+            api_key=llm_config.api_key,
+            api_base_url=llm_config.api_base or "https://api.openai.com/v1",
+            model_name=llm_config.model,
+            anchor_rounds=args.zoso_anchor_rounds,
+            bridge_rounds=args.zoso_bridge_rounds,
+            golden_set_size=args.zoso_golden_size,
+            retrieval_top_k=args.retrieval_top_k,
+            retrieval_first_k=args.retrieval_first_k,
+        )
+        
+        print(f"  Anchor rounds: {zoso_config.anchor_rounds}")
+        print(f"  Bridge rounds: {zoso_config.bridge_rounds}")
+        print(f"  Golden set size: {zoso_config.golden_set_size}")
+        
+        # Initialize ZOSO components
+        embedder = SentenceTransformer('all-mpnet-base-v2')
+        zoso_pool = ZOSOSuffixPool.from_file(Path(args.suffix_pool), embedder)
+        
+        client = OpenAI(base_url=zoso_config.api_base_url, api_key=zoso_config.api_key)
+        data_mgr = DataManager(all_data, zoso_config, client)
+        
+        # Run optimization
+        optimizer = ZOSOOptimizer(
+            zoso_config, zoso_pool, data_mgr,
+            corpus_embs, corpus_texts,
+            contriever, contriever_tokenizer,
+        )
+        zoso_results = optimizer.optimize()
+        
+        # Save ZOSO results
+        if args.dataset:
+            ds = args.dataset.lower()
+            model_folder = llm_config.model.replace(".", "-").replace(" ", "-")
+            zoso_output = DATA_ROOT / f"suffix_pool/zoso_results/{model_folder}/{ds}_zoso_results.json"
+            zoso_output.parent.mkdir(parents=True, exist_ok=True)
         else:
-            print("\n  [Stage 1.4] ZOSO Suffix Optimization...")
-            print("  " + "-" * 50)
-            
-            from .generation.zoso.zoso_optimizer import ZOSOConfig, ZOSOOptimizer, SuffixPool as ZOSOSuffixPool, DataManager
-            from openai import OpenAI
-            from sentence_transformers import SentenceTransformer
-            
-            # ZOSO config
-            zoso_config = ZOSOConfig(
-                api_key=llm_config.api_key,
-                api_base_url=llm_config.api_base or ("https://api.openai.com/v1" if llm_config.provider != "hf" else ""),
-                model_name=llm_config.model,
-                anchor_rounds=args.zoso_anchor_rounds,
-                bridge_rounds=args.zoso_bridge_rounds,
-                golden_set_size=args.zoso_golden_size,
-                retrieval_top_k=args.retrieval_top_k,
-                retrieval_first_k=args.retrieval_first_k,
-            )
-            
-            print(f"  Anchor rounds: {zoso_config.anchor_rounds}")
-            print(f"  Bridge rounds: {zoso_config.bridge_rounds}")
-            print(f"  Golden set size: {zoso_config.golden_set_size}")
-            
-            # Initialize ZOSO components
-            embedder = SentenceTransformer('all-mpnet-base-v2')
-            zoso_pool = ZOSOSuffixPool.from_file(Path(args.suffix_pool), embedder)
-
-            if llm_config.provider != "hf" and not llm_config.api_key:
-                print("Error: ZOSO requires an OpenAI-compatible API key. Set llm.api_key in config.yaml or pass --api-key / OPENAI_API_KEY.")
-                return
-
-            client = create_llm_client(llm_config) if llm_config.provider == "hf" else OpenAI(base_url=zoso_config.api_base_url, api_key=zoso_config.api_key)
-            data_mgr = DataManager(all_data, zoso_config, client)
-            
-            # Run optimization
-            optimizer = ZOSOOptimizer(
-                zoso_config, zoso_pool, data_mgr,
-                corpus_embs, corpus_texts,
-                contriever, contriever_tokenizer,
-            )
-            zoso_results = optimizer.optimize()
-            
-            # Save ZOSO results
-            if args.dataset:
-                ds = args.dataset.lower()
-                model_folder = llm_config.model.replace(".", "-").replace(" ", "-")
-                zoso_output = DATA_ROOT / f"suffix_pool/zoso_results/{model_folder}/{ds}_zoso_results.json"
-                zoso_output.parent.mkdir(parents=True, exist_ok=True)
-            else:
-                zoso_output = _append_output_suffix(args.output, "_zoso", llm_config.model)
-            
-            with open(zoso_output, "w") as f:
-                json.dump(zoso_results, f, indent=2, ensure_ascii=False)
-            
-            print(f"\n  ✓ Stage 1.4 Complete: ZOSO results saved to: {zoso_output}")
-            
-            # Update args.zoso_results
-            args.zoso_results = str(zoso_output)
-            
-            print(f"\n" + "=" * 60)
-            print(f"✓ Stage 1 Complete!")
-            print(f"  - Logic Traps: {args.data}")
-            print(f"  - ZOSO Suffix: {args.zoso_results}")
-            print("=" * 60)
-
-    # # Load ZOSO results (optimal suffix indices)
-    # optimal_anchor_idx = 0
-    # optimal_bridge_idx = 0
-    # if args.zoso_results:
-    #     with open(args.zoso_results, "r") as f:
-    #         zoso = json.load(f)
-    #     optimal_anchor_idx = zoso.get("best", {}).get("anchor_idx", 0)
-    #     optimal_bridge_idx = zoso.get("best", {}).get("bridge_idx", 0)
-    #     print(f"  ZOSO optimal: anchor={optimal_anchor_idx}, bridge={optimal_bridge_idx} (from {args.zoso_results})")
-
-    #     if should_run_stage1:
-    #         # --zoso-only: skip ADV generation and use existing data
-    #         if args.zoso_only:
-    #             print("\n  [--zoso-only] Skipping ADV generation, using existing data...")
-    #             # Directly proceed to the data-loading stage
-    #         else:
-    #             from .generation.logic_trap import LogicTrapGenerator
-            
-    #         # Determine input file (using data under InceptionRAG/data/)
-    #         if not args.zoso_only:
-    #             if args.input_queries:
-    #                 input_path = Path(args.input_queries)
-    #             elif args.dataset:
-    #                 ds = args.dataset.lower()
-    #                 # Data source priority: InceptionRAG/data/datasets/{ds}/queries.jsonl
-    #                 raw_queries = DATA_ROOT / f"datasets/{ds}/queries.jsonl"
-                    
-    #                 if not raw_queries.exists():
-    #                     print(f"Error: Dataset not found at {raw_queries}")
-    #                     print(f"Please run: bash InceptionRAG/scripts/download_all_datasets.sh")
-    #                     return
-                    
-    #                 input_path = raw_queries
-    #             else:
-    #                 print("Error: --stage1 requires --input-queries or --dataset")
-    #                 return
-            
-    #             if not input_path.exists():
-    #                 print(f"Error: Input file not found: {input_path}")
-    #                 return
-            
-    #         # Load input (skip if --zoso-only)
-    #         if not args.zoso_only:
-    #             print(f"\n  [Stage 1.1] Loading queries from: {input_path}")
-    #             with open(input_path, "r") as f:
-    #                 if input_path.suffix == ".jsonl":
-    #                     raw_items = [json.loads(line) for line in f]
-    #                 else:
-    #                     raw_items = json.load(f)
-            
-    #             if args.limit:
-    #                 raw_items = raw_items[:args.limit]
-            
-    #             print(f"  Loaded: {len(raw_items)} queries")
-            
-    #             # Check whether incorrect answers need to be generated
-    #             needs_incorrect_answer = not raw_items[0].get("incorrect answer") and not raw_items[0].get("target_answer")
-            
-    #             # Prepare items for generation
-    #             gen_items = []
-    #             llm = create_llm_client(llm_config)
-            
-    #             for i, item in enumerate(raw_items):
-    #                 question = item.get("question") or item.get("text", "")
-    #                 target = item.get("incorrect answer") or item.get("target_answer", "")
-                    
-    #                 # If incorrect answer is missing, generate one with LLM
-    #                 if not target and needs_incorrect_answer:
-    #                     if i == 0:
-    #                         print(f"\n  [Stage 1.2] Generating incorrect answers...")
-                        
-    #                     try:
-    #                         resp = llm.chat(
-    #                             user_message=f"Question: {question}\n\nGenerate a plausible but INCORRECT answer to this question. Just output the incorrect answer, nothing else.",
-    #                             system_message="You are a helpful assistant that generates plausible but incorrect answers for testing purposes.",
-    #                             temperature=0.7,
-    #                             max_tokens=50,
-    #                         )
-    #                         target = resp.strip()
-    #                         print(f"    [{i+1}/{len(raw_items)}] Q: {question[:40]}... -> Incorrect: {target[:30]}...")
-    #                     except Exception as e:
-    #                         target = "Unknown"
-    #                         print(f"    [{i+1}] Error: {e}")
-                    
-    #                 gen_items.append({
-    #                     "id": item.get("id") or item.get("_id", ""),
-    #                     "question": question,
-    #                     "target_answer": target,
-    #                 })
-            
-    #         if not args.zoso_only:
-    #             print(f"\n  [Stage 1.3] Generating Logic Traps (Attribute + Bridge Documents)...")
-    #             print(f"  Items: {len(gen_items)}")
-                
-    #             # Generate Logic Traps
-    #             generator = LogicTrapGenerator(llm_config=llm_config)
-                
-    #             # Output path: InceptionRAG/data/adv/{dataset}/{dataset}_0-{limit}_with_ad.json
-    #             if args.dataset:
-    #                 ds = args.dataset.lower()
-    #                 limit = args.limit or 100
-    #                 # Compute range in batches of 100
-    #                 start_idx = 0
-    #                 end_idx = limit
-    #                 gen_output = DATA_ROOT / f"adv/{ds}/{ds}_{start_idx}-{end_idx}_with_ad.json"
-    #             else:
-    #                 gen_output = _append_output_suffix(args.output, "_with_ad", llm_config.model)
-                
-    #             gen_output.parent.mkdir(parents=True, exist_ok=True)
-    #             results = generator.generate_batch(gen_items, gen_output)
-                
-    #             print(f"\n  ✓ Stage 1.1-1.3 Complete: Generated {len(results)} Logic Traps")
-    #             print(f"  Saved to: {gen_output}")
-                
-    #             # Update args.data to use generated file
-    #             args.data = str(gen_output)
-    #     else:
-    #         print("\n  [Stage 1.4] Reusing existing ZOSO results: " + args.zoso_results)
-    #         print("  Skipping re-generation of logic traps and incorrect answers because reuse-existing-stage1 is enabled.")
-    
-    # # Auto-resolve paths if --dataset is specified (all from InceptionRAG/data/)
-    # if args.dataset:
-    #     ds = args.dataset.lower()
-    #     model_folder = llm_config.model.replace(".", "-").replace(" ", "-")
-    #     limit = args.limit or 100
+            zoso_output = Path(args.output).with_suffix("_zoso.json")
         
-    #     # Data paths (using InceptionRAG/data/)
-    #     if not args.data:
-    #         # Prioritize newly generated ADV data
-    #         adv_data = DATA_ROOT / f"adv/{ds}/{ds}_0-{limit}_with_ad.json"
-    #         if adv_data.exists():
-    #             args.data = str(adv_data)
-    #         else:
-    #             print(f"Error: ADV data not found at {adv_data}")
-    #             print(f"Please run with --generate first")
-    #             return
+        with open(zoso_output, "w") as f:
+            json.dump(zoso_results, f, indent=2, ensure_ascii=False)
         
-    #     if not args.suffix_pool:
-    #         args.suffix_pool = str(DATA_ROOT / "suffix_pool/suffix_candidates.json")
+        print(f"\n  ✓ Stage 1.4 Complete: ZOSO results saved to: {zoso_output}")
         
-    #     if not args.zoso_results:
-    #         zoso_path = DATA_ROOT / f"suffix_pool/zoso_results/{model_folder}/{ds}_zoso_results.json"
-    #         if zoso_path.exists():
-    #             args.zoso_results = str(zoso_path)
+        # Update args.zoso_results
+        args.zoso_results = str(zoso_output)
         
-    #     # Corpus cache (using InceptionRAG/data/corpus/)
-    #     if not args.corpus_embs:
-    #         args.corpus_embs = str(DATA_ROOT / f"corpus/{ds}_contriever_embs.npy")
-    #     if not args.corpus_texts:
-    #         args.corpus_texts = str(DATA_ROOT / f"corpus/{ds}_corpus_texts.json")
-        
-    #     print(f"[Auto] Dataset: {ds}, Model: {model_folder}")
-    
-    # # Validate required paths
-    # if not args.data or not args.suffix_pool or not args.corpus_embs or not args.corpus_texts:
-    #     print("Error: Must specify --dataset or provide all data paths manually")
-    #     return
-    
-    # # Load data
-    # print("\n[1/5] Loading data...")
-    # with open(args.data, "r") as f:
-    #     all_data = json.load(f)
-    # if args.limit:
-    #     all_data = all_data[:args.limit]
-    # print(f"  Samples: {len(all_data)} (from {args.data})")
-    
-    # # Load corpus
-    # print("\n[2/5] Loading corpus...")
-    # corpus_embs = np.load(args.corpus_embs)
-    # with open(args.corpus_texts, "r") as f:
-    #     corpus_texts = json.load(f)
-    # print(f"  Corpus: {len(corpus_texts)} docs")
-    
-    # # Load Contriever
-    # print("\n[3/5] Loading Contriever...")
-    # contriever_tokenizer = AutoTokenizer.from_pretrained("facebook/contriever")
-    # contriever = AutoModel.from_pretrained("facebook/contriever").eval()
-    # device = "cuda" if torch.cuda.is_available() else "cpu"
-    # contriever = contriever.to(device)
-    # print(f"  Device: {device}")
-    
-    # # Load suffix pool
-    # print("\n[4/5] Loading suffix pool...")
-    # suffix_pool = SuffixPool(Path(args.suffix_pool))
-    
-    # # ========== Stage 1.4: ZOSO Suffix Optimization (if --stage1 or --zoso-only) ==========
-    # if args.stage1 or args.zoso_only:
-    #     print("\n  [Stage 1.4] ZOSO Suffix Optimization...")
-    #     print("  " + "-" * 50)
-        
-    #     from .generation.zoso.zoso_optimizer import ZOSOConfig, ZOSOOptimizer, SuffixPool as ZOSOSuffixPool, DataManager
-    #     from openai import OpenAI
-    #     from sentence_transformers import SentenceTransformer
-        
-    #     # ZOSO config
-    #     zoso_config = ZOSOConfig(
-    #         api_key=llm_config.api_key,
-    #         api_base_url=llm_config.api_base or ("https://api.openai.com/v1" if llm_config.provider != "hf" else ""),
-    #         model_name=llm_config.model,
-    #         anchor_rounds=args.zoso_anchor_rounds,
-    #         bridge_rounds=args.zoso_bridge_rounds,
-    #         golden_set_size=args.zoso_golden_size,
-    #         retrieval_top_k=args.retrieval_top_k,
-    #         retrieval_first_k=args.retrieval_first_k,
-    #     )
-        
-    #     print(f"  Anchor rounds: {zoso_config.anchor_rounds}")
-    #     print(f"  Bridge rounds: {zoso_config.bridge_rounds}")
-    #     print(f"  Golden set size: {zoso_config.golden_set_size}")
-        
-    #     # Initialize ZOSO components
-    #     embedder = SentenceTransformer('all-mpnet-base-v2')
-    #     zoso_pool = ZOSOSuffixPool.from_file(Path(args.suffix_pool), embedder)
-
-    #     if llm_config.provider != "hf" and not llm_config.api_key:
-    #         print("Error: ZOSO requires an OpenAI-compatible API key. Set llm.api_key in config.yaml or pass --api-key / OPENAI_API_KEY.")
-    #         return
-
-    #     client = create_llm_client(llm_config) if llm_config.provider == "hf" else OpenAI(base_url=zoso_config.api_base_url, api_key=zoso_config.api_key)
-    #     data_mgr = DataManager(all_data, zoso_config, client)
-        
-    #     # Run optimization
-    #     optimizer = ZOSOOptimizer(
-    #         zoso_config, zoso_pool, data_mgr,
-    #         corpus_embs, corpus_texts,
-    #         contriever, contriever_tokenizer,
-    #     )
-    #     zoso_results = optimizer.optimize()
-        
-    #     # Save ZOSO results
-    #     if args.dataset:
-    #         ds = args.dataset.lower()
-    #         model_folder = llm_config.model.replace(".", "-").replace(" ", "-")
-    #         zoso_output = DATA_ROOT / f"suffix_pool/zoso_results/{model_folder}/{ds}_zoso_results.json"
-    #         zoso_output.parent.mkdir(parents=True, exist_ok=True)
-    #     else:
-    #         zoso_output = _append_output_suffix(args.output, "_zoso", llm_config.model)
-        
-    #     with open(zoso_output, "w") as f:
-    #         json.dump(zoso_results, f, indent=2, ensure_ascii=False)
-        
-    #     print(f"\n  ✓ Stage 1.4 Complete: ZOSO results saved to: {zoso_output}")
-        
-    #     # Update args.zoso_results
-    #     args.zoso_results = str(zoso_output)
-        
-    #     print(f"\n" + "=" * 60)
-    #     print(f"✓ Stage 1 Complete!")
-    #     print(f"  - Logic Traps: {args.data}")
-    #     print(f"  - ZOSO Suffix: {args.zoso_results}")
-    #     print("=" * 60)
+        print(f"\n" + "=" * 60)
+        print(f"✓ Stage 1 Complete!")
+        print(f"  - Logic Traps: {args.data}")
+        print(f"  - ZOSO Suffix: {args.zoso_results}")
+        print("=" * 60)
     
     # Load ZOSO results (optimal suffix indices)
     optimal_anchor_idx = 0
@@ -1679,16 +1069,15 @@ def main():
     
     # Initialize
     print("\n[5/5] Initializing attacker...")
-    reranker = PassageReranker(config.reranker_model, top_k=config.rerank_top_k) if config.use_reranker else None
-    retriever = TwoStageRetriever(corpus_texts, corpus_embs, contriever, contriever_tokenizer, config, reranker=reranker)
-    attacker = InceptionRAGAttacker(config, suffix_pool, retriever, optimal_anchor_idx, optimal_bridge_idx, config_yaml_text)
+    retriever = TwoStageRetriever(corpus_texts, corpus_embs, contriever, contriever_tokenizer, config)
+    attacker = InceptionRAGAttacker(config, suffix_pool, retriever, optimal_anchor_idx, optimal_bridge_idx)
     
     # Attack
     print("\n" + "=" * 60)
     print("Stage 3: Attack with CTTFT")
     print("=" * 60)
     
-    output_path = _resolve_model_output_path(args.output, llm_config.model)
+    output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     
     results = attacker.attack_batch(all_data, output_path)
