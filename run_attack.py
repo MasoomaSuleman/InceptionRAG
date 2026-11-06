@@ -354,12 +354,26 @@ class TwoStageRetriever:
 # Suffix Pool
 # ============================================================================
 
+def _resolve_suffix_pool_path(path: Path) -> Path:
+    """Prefer the explicit path, then fall back to the bundled repo data directory."""
+    candidate = Path(path)
+    if candidate.exists():
+        return candidate
+
+    fallback = Path(__file__).resolve().parent / "data" / "suffix_pool" / candidate.name
+    if fallback.exists():
+        return fallback
+
+    return candidate
+
+
 class SuffixPool:
     """Suffix pool with neighbor search for CTTFT"""
     
     def __init__(self, path: Path):
         from sentence_transformers import SentenceTransformer
-        
+
+        path = _resolve_suffix_pool_path(path)
         with open(path, "r") as f:
             data = json.load(f)
         

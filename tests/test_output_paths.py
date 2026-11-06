@@ -1,9 +1,11 @@
 from pathlib import Path
 
+from InceptionRAG.llm_client import _resolve_local_model_path
 from InceptionRAG.run_attack import (
     _candidate_stage_artifact_paths,
     _resolve_model_output_path,
     _append_output_suffix,
+    _resolve_suffix_pool_path,
     load_attack_config_from_yaml,
 )
 
@@ -74,3 +76,26 @@ def test_stage_artifact_candidates_include_model_and_base_paths():
     assert Path(
         "/tmp/masoo20/inception_rag/results/hotpotqa_attack_100_with_ad.json"
     ) in candidates
+
+
+def test_resolve_local_model_path_does_not_force_offline_for_missing_cache(monkeypatch):
+    seen = {}
+
+    def fake_snapshot_download(**kwargs):
+        seen.update(kwargs)
+        return "/tmp/fake-hf-model"
+
+    monkeypatch.setattr("InceptionRAG.llm_client.snapshot_download", fake_snapshot_download)
+
+    result = _resolve_local_model_path("Qwen/Qwen2.5-3B-Instruct")
+
+    assert result == "/tmp/fake-hf-model"
+    assert seen["local_files_only"] is False
+
+
+def test_resolve_suffix_pool_path_falls_back_to_repo_data(tmp_path):
+    missing = tmp_path / "missing" / "suffix_candidates.json"
+    result = _resolve_suffix_pool_path(missing)
+
+    assert result == Path(__file__).resolve().parents[1] / "data" / "suffix_pool" / "suffix_candidates.json"
+    assert result.exists()

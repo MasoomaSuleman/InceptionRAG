@@ -8,11 +8,11 @@ llm:
   model: "Qwen/Qwen2.5-3B-Instruct" # local HF model name
 
 attack:
-  retrieval_top_k: 12
+  retrieval_top_k: 20
   retrieval_first_k: 20
   cttft_neighbor_k: 10
   noise_injection: true
-  dual_injection: true
+  dual_injection: false
   query_prefix: false
   rerank_top_k: 6
-  use_reranker: true
+  use_reranker: false

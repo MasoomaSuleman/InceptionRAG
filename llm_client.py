@@ -97,22 +97,12 @@ class LLMConfig:
 
 
 def _resolve_local_model_path(model_name: str) -> str:
-    """Resolve a repo ID to the cached snapshot directory when running fully offline."""
+    """Resolve a repo ID to the cached snapshot directory when available; otherwise allow a normal HF lookup."""
     if not model_name:
         return model_name
 
     if os.path.exists(model_name):
         return model_name
-
-    if snapshot_download is not None and "/" in model_name:
-        try:
-            return snapshot_download(
-                repo_id=model_name,
-                cache_dir=HF_CACHE_DIR,
-                local_files_only=True,
-            )
-        except Exception:
-            pass
 
     candidate = os.path.join(HF_CACHE_DIR, "models--" + model_name.replace("/", "--"))
     if os.path.isdir(candidate):
@@ -122,6 +112,16 @@ def _resolve_local_model_path(model_name: str) -> str:
             if snapshot_dirs:
                 return os.path.join(snapshot_root, snapshot_dirs[0])
         return candidate
+
+    if snapshot_download is not None and "/" in model_name:
+        try:
+            return snapshot_download(
+                repo_id=model_name,
+                cache_dir=HF_CACHE_DIR,
+                local_files_only=False,
+            )
+        except Exception:
+            pass
 
     return model_name
 
@@ -150,7 +150,15 @@ class LLMClient:
         from transformers import AutoTokenizer, AutoModelForCausalLM
 
         model_name = _resolve_local_model_path(self.config.model or "Qwen/Qwen2.5-7B-Instruct")
-        self._tokenizer = AutoTokenizer.from_pretrained(model_name, local_files_only=True)
+        is_local_path = os.path.exists(model_name) or os.path.isdir(model_name)
+        offline_mode = not ("/" in model_name and not is_local_path)
+
+        try:
+            self._tokenizer = AutoTokenizer.from_pretrained(model_name, local_files_only=offline_mode)
+        except OSError as exc:
+            raise RuntimeError(
+                f"Could not load Hugging Face model '{self.config.model}'. Please either cache it locally or use a provider other than 'hf'."
+            ) from exc
         if self._tokenizer.pad_token is None:
             self._tokenizer.pad_token = self._tokenizer.eos_token
 
@@ -164,7 +172,7 @@ class LLMClient:
                     torch_dtype=torch_dtype,
                     device_map="auto",
                     low_cpu_mem_usage=True,
-                    local_files_only=True,
+                    local_files_only=offline_mode,
                 )
             else:
                 self._model = AutoModelForCausalLM.from_pretrained(
@@ -172,7 +180,7 @@ class LLMClient:
                     torch_dtype=torch_dtype,
                     device_map=None,
                     low_cpu_mem_usage=True,
-                    local_files_only=True,
+                    local_files_only=offline_mode,
                 )
                 self._model = self._model.to(device)
         except RuntimeError as e:
@@ -183,7 +191,7 @@ class LLMClient:
                     torch_dtype=torch.float32,
                     device_map=None,
                     low_cpu_mem_usage=True,
-                    local_files_only=True,
+                    local_files_only=offline_mode,
                 )
                 self._model = self._model.to("cpu")
                 device = "cpu"
