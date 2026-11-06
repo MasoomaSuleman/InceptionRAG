@@ -1112,16 +1112,29 @@ def main():
     
     # Reuse/generated-artifact checkpoint handling before running Stage 1 work.
     should_run_stage1 = True
-    if args.reuse_existing_stage1 and args.output:
-        candidate_adv = _resolve_model_output_path(args.output, llm_config.model, "_with_ad")
-        candidate_zoso = _resolve_model_output_path(args.output, llm_config.model, "_zoso")
+    # if args.reuse_existing_stage1 and args.output:
+    candidate_adv = _resolve_model_output_path(args.output, llm_config.model, "_with_ad")
+    candidate_zoso = _resolve_model_output_path(args.output, llm_config.model, "_zoso")
+    
+    if candidate_adv.exists() and candidate_zoso.exists():
+        args.data = str(candidate_adv)
+        args.zoso_results = str(candidate_zoso)
+        should_run_stage1 = False
+        print(f"  Reusing existing ADV artifact: {args.data}")
+        print(f"  Reusing existing ZOSO artifact: {args.zoso_results}")
 
-        if candidate_adv.exists() and candidate_zoso.exists():
-            args.data = str(candidate_adv)
-            args.zoso_results = str(candidate_zoso)
-            should_run_stage1 = False
-            print(f"  Reusing existing ADV artifact: {args.data}")
-            print(f"  Reusing existing ZOSO artifact: {args.zoso_results}")
+    ds = args.dataset.lower()
+    limit = args.limit or 100
+    # Compute range in batches of 100
+    start_idx = 0
+    end_idx = limit
+    candidate_adv = DATA_ROOT / f"adv/{ds}/{ds}_{start_idx}-{end_idx}_with_ad.json"
+    candidate_zoso = _resolve_model_output_path(args.output, llm_config.model, "_zoso")
+    
+    if candidate_adv.exists():
+        args.data = str(candidate_adv)
+        should_run_stage1 = False
+        print(f"  Reusing existing ADV artifact: {args.data}")
 
     # ========== Stage 1: Generate Logic Traps + ZOSO (if --stage1 or --zoso-only) ==========
     if args.stage1 or args.zoso_only:
@@ -1394,257 +1407,257 @@ def main():
             print(f"  - ZOSO Suffix: {args.zoso_results}")
             print("=" * 60)
 
-    # Load ZOSO results (optimal suffix indices)
-    optimal_anchor_idx = 0
-    optimal_bridge_idx = 0
-    if args.zoso_results:
-        with open(args.zoso_results, "r") as f:
-            zoso = json.load(f)
-        optimal_anchor_idx = zoso.get("best", {}).get("anchor_idx", 0)
-        optimal_bridge_idx = zoso.get("best", {}).get("bridge_idx", 0)
-        print(f"  ZOSO optimal: anchor={optimal_anchor_idx}, bridge={optimal_bridge_idx} (from {args.zoso_results})")
+    # # Load ZOSO results (optimal suffix indices)
+    # optimal_anchor_idx = 0
+    # optimal_bridge_idx = 0
+    # if args.zoso_results:
+    #     with open(args.zoso_results, "r") as f:
+    #         zoso = json.load(f)
+    #     optimal_anchor_idx = zoso.get("best", {}).get("anchor_idx", 0)
+    #     optimal_bridge_idx = zoso.get("best", {}).get("bridge_idx", 0)
+    #     print(f"  ZOSO optimal: anchor={optimal_anchor_idx}, bridge={optimal_bridge_idx} (from {args.zoso_results})")
 
-        if should_run_stage1:
-            # --zoso-only: skip ADV generation and use existing data
-            if args.zoso_only:
-                print("\n  [--zoso-only] Skipping ADV generation, using existing data...")
-                # Directly proceed to the data-loading stage
-            else:
-                from .generation.logic_trap import LogicTrapGenerator
+    #     if should_run_stage1:
+    #         # --zoso-only: skip ADV generation and use existing data
+    #         if args.zoso_only:
+    #             print("\n  [--zoso-only] Skipping ADV generation, using existing data...")
+    #             # Directly proceed to the data-loading stage
+    #         else:
+    #             from .generation.logic_trap import LogicTrapGenerator
             
-            # Determine input file (using data under InceptionRAG/data/)
-            if not args.zoso_only:
-                if args.input_queries:
-                    input_path = Path(args.input_queries)
-                elif args.dataset:
-                    ds = args.dataset.lower()
-                    # Data source priority: InceptionRAG/data/datasets/{ds}/queries.jsonl
-                    raw_queries = DATA_ROOT / f"datasets/{ds}/queries.jsonl"
+    #         # Determine input file (using data under InceptionRAG/data/)
+    #         if not args.zoso_only:
+    #             if args.input_queries:
+    #                 input_path = Path(args.input_queries)
+    #             elif args.dataset:
+    #                 ds = args.dataset.lower()
+    #                 # Data source priority: InceptionRAG/data/datasets/{ds}/queries.jsonl
+    #                 raw_queries = DATA_ROOT / f"datasets/{ds}/queries.jsonl"
                     
-                    if not raw_queries.exists():
-                        print(f"Error: Dataset not found at {raw_queries}")
-                        print(f"Please run: bash InceptionRAG/scripts/download_all_datasets.sh")
-                        return
+    #                 if not raw_queries.exists():
+    #                     print(f"Error: Dataset not found at {raw_queries}")
+    #                     print(f"Please run: bash InceptionRAG/scripts/download_all_datasets.sh")
+    #                     return
                     
-                    input_path = raw_queries
-                else:
-                    print("Error: --stage1 requires --input-queries or --dataset")
-                    return
+    #                 input_path = raw_queries
+    #             else:
+    #                 print("Error: --stage1 requires --input-queries or --dataset")
+    #                 return
             
-                if not input_path.exists():
-                    print(f"Error: Input file not found: {input_path}")
-                    return
+    #             if not input_path.exists():
+    #                 print(f"Error: Input file not found: {input_path}")
+    #                 return
             
-            # Load input (skip if --zoso-only)
-            if not args.zoso_only:
-                print(f"\n  [Stage 1.1] Loading queries from: {input_path}")
-                with open(input_path, "r") as f:
-                    if input_path.suffix == ".jsonl":
-                        raw_items = [json.loads(line) for line in f]
-                    else:
-                        raw_items = json.load(f)
+    #         # Load input (skip if --zoso-only)
+    #         if not args.zoso_only:
+    #             print(f"\n  [Stage 1.1] Loading queries from: {input_path}")
+    #             with open(input_path, "r") as f:
+    #                 if input_path.suffix == ".jsonl":
+    #                     raw_items = [json.loads(line) for line in f]
+    #                 else:
+    #                     raw_items = json.load(f)
             
-                if args.limit:
-                    raw_items = raw_items[:args.limit]
+    #             if args.limit:
+    #                 raw_items = raw_items[:args.limit]
             
-                print(f"  Loaded: {len(raw_items)} queries")
+    #             print(f"  Loaded: {len(raw_items)} queries")
             
-                # Check whether incorrect answers need to be generated
-                needs_incorrect_answer = not raw_items[0].get("incorrect answer") and not raw_items[0].get("target_answer")
+    #             # Check whether incorrect answers need to be generated
+    #             needs_incorrect_answer = not raw_items[0].get("incorrect answer") and not raw_items[0].get("target_answer")
             
-                # Prepare items for generation
-                gen_items = []
-                llm = create_llm_client(llm_config)
+    #             # Prepare items for generation
+    #             gen_items = []
+    #             llm = create_llm_client(llm_config)
             
-                for i, item in enumerate(raw_items):
-                    question = item.get("question") or item.get("text", "")
-                    target = item.get("incorrect answer") or item.get("target_answer", "")
+    #             for i, item in enumerate(raw_items):
+    #                 question = item.get("question") or item.get("text", "")
+    #                 target = item.get("incorrect answer") or item.get("target_answer", "")
                     
-                    # If incorrect answer is missing, generate one with LLM
-                    if not target and needs_incorrect_answer:
-                        if i == 0:
-                            print(f"\n  [Stage 1.2] Generating incorrect answers...")
+    #                 # If incorrect answer is missing, generate one with LLM
+    #                 if not target and needs_incorrect_answer:
+    #                     if i == 0:
+    #                         print(f"\n  [Stage 1.2] Generating incorrect answers...")
                         
-                        try:
-                            resp = llm.chat(
-                                user_message=f"Question: {question}\n\nGenerate a plausible but INCORRECT answer to this question. Just output the incorrect answer, nothing else.",
-                                system_message="You are a helpful assistant that generates plausible but incorrect answers for testing purposes.",
-                                temperature=0.7,
-                                max_tokens=50,
-                            )
-                            target = resp.strip()
-                            print(f"    [{i+1}/{len(raw_items)}] Q: {question[:40]}... -> Incorrect: {target[:30]}...")
-                        except Exception as e:
-                            target = "Unknown"
-                            print(f"    [{i+1}] Error: {e}")
+    #                     try:
+    #                         resp = llm.chat(
+    #                             user_message=f"Question: {question}\n\nGenerate a plausible but INCORRECT answer to this question. Just output the incorrect answer, nothing else.",
+    #                             system_message="You are a helpful assistant that generates plausible but incorrect answers for testing purposes.",
+    #                             temperature=0.7,
+    #                             max_tokens=50,
+    #                         )
+    #                         target = resp.strip()
+    #                         print(f"    [{i+1}/{len(raw_items)}] Q: {question[:40]}... -> Incorrect: {target[:30]}...")
+    #                     except Exception as e:
+    #                         target = "Unknown"
+    #                         print(f"    [{i+1}] Error: {e}")
                     
-                    gen_items.append({
-                        "id": item.get("id") or item.get("_id", ""),
-                        "question": question,
-                        "target_answer": target,
-                    })
+    #                 gen_items.append({
+    #                     "id": item.get("id") or item.get("_id", ""),
+    #                     "question": question,
+    #                     "target_answer": target,
+    #                 })
             
-            if not args.zoso_only:
-                print(f"\n  [Stage 1.3] Generating Logic Traps (Attribute + Bridge Documents)...")
-                print(f"  Items: {len(gen_items)}")
+    #         if not args.zoso_only:
+    #             print(f"\n  [Stage 1.3] Generating Logic Traps (Attribute + Bridge Documents)...")
+    #             print(f"  Items: {len(gen_items)}")
                 
-                # Generate Logic Traps
-                generator = LogicTrapGenerator(llm_config=llm_config)
+    #             # Generate Logic Traps
+    #             generator = LogicTrapGenerator(llm_config=llm_config)
                 
-                # Output path: InceptionRAG/data/adv/{dataset}/{dataset}_0-{limit}_with_ad.json
-                if args.dataset:
-                    ds = args.dataset.lower()
-                    limit = args.limit or 100
-                    # Compute range in batches of 100
-                    start_idx = 0
-                    end_idx = limit
-                    gen_output = DATA_ROOT / f"adv/{ds}/{ds}_{start_idx}-{end_idx}_with_ad.json"
-                else:
-                    gen_output = _append_output_suffix(args.output, "_with_ad", llm_config.model)
+    #             # Output path: InceptionRAG/data/adv/{dataset}/{dataset}_0-{limit}_with_ad.json
+    #             if args.dataset:
+    #                 ds = args.dataset.lower()
+    #                 limit = args.limit or 100
+    #                 # Compute range in batches of 100
+    #                 start_idx = 0
+    #                 end_idx = limit
+    #                 gen_output = DATA_ROOT / f"adv/{ds}/{ds}_{start_idx}-{end_idx}_with_ad.json"
+    #             else:
+    #                 gen_output = _append_output_suffix(args.output, "_with_ad", llm_config.model)
                 
-                gen_output.parent.mkdir(parents=True, exist_ok=True)
-                results = generator.generate_batch(gen_items, gen_output)
+    #             gen_output.parent.mkdir(parents=True, exist_ok=True)
+    #             results = generator.generate_batch(gen_items, gen_output)
                 
-                print(f"\n  ✓ Stage 1.1-1.3 Complete: Generated {len(results)} Logic Traps")
-                print(f"  Saved to: {gen_output}")
+    #             print(f"\n  ✓ Stage 1.1-1.3 Complete: Generated {len(results)} Logic Traps")
+    #             print(f"  Saved to: {gen_output}")
                 
-                # Update args.data to use generated file
-                args.data = str(gen_output)
-        else:
-            print("\n  [Stage 1.4] Reusing existing ZOSO results: " + args.zoso_results)
-            print("  Skipping re-generation of logic traps and incorrect answers because reuse-existing-stage1 is enabled.")
+    #             # Update args.data to use generated file
+    #             args.data = str(gen_output)
+    #     else:
+    #         print("\n  [Stage 1.4] Reusing existing ZOSO results: " + args.zoso_results)
+    #         print("  Skipping re-generation of logic traps and incorrect answers because reuse-existing-stage1 is enabled.")
     
-    # Auto-resolve paths if --dataset is specified (all from InceptionRAG/data/)
-    if args.dataset:
-        ds = args.dataset.lower()
-        model_folder = llm_config.model.replace(".", "-").replace(" ", "-")
-        limit = args.limit or 100
+    # # Auto-resolve paths if --dataset is specified (all from InceptionRAG/data/)
+    # if args.dataset:
+    #     ds = args.dataset.lower()
+    #     model_folder = llm_config.model.replace(".", "-").replace(" ", "-")
+    #     limit = args.limit or 100
         
-        # Data paths (using InceptionRAG/data/)
-        if not args.data:
-            # Prioritize newly generated ADV data
-            adv_data = DATA_ROOT / f"adv/{ds}/{ds}_0-{limit}_with_ad.json"
-            if adv_data.exists():
-                args.data = str(adv_data)
-            else:
-                print(f"Error: ADV data not found at {adv_data}")
-                print(f"Please run with --generate first")
-                return
+    #     # Data paths (using InceptionRAG/data/)
+    #     if not args.data:
+    #         # Prioritize newly generated ADV data
+    #         adv_data = DATA_ROOT / f"adv/{ds}/{ds}_0-{limit}_with_ad.json"
+    #         if adv_data.exists():
+    #             args.data = str(adv_data)
+    #         else:
+    #             print(f"Error: ADV data not found at {adv_data}")
+    #             print(f"Please run with --generate first")
+    #             return
         
-        if not args.suffix_pool:
-            args.suffix_pool = str(DATA_ROOT / "suffix_pool/suffix_candidates.json")
+    #     if not args.suffix_pool:
+    #         args.suffix_pool = str(DATA_ROOT / "suffix_pool/suffix_candidates.json")
         
-        if not args.zoso_results:
-            zoso_path = DATA_ROOT / f"suffix_pool/zoso_results/{model_folder}/{ds}_zoso_results.json"
-            if zoso_path.exists():
-                args.zoso_results = str(zoso_path)
+    #     if not args.zoso_results:
+    #         zoso_path = DATA_ROOT / f"suffix_pool/zoso_results/{model_folder}/{ds}_zoso_results.json"
+    #         if zoso_path.exists():
+    #             args.zoso_results = str(zoso_path)
         
-        # Corpus cache (using InceptionRAG/data/corpus/)
-        if not args.corpus_embs:
-            args.corpus_embs = str(DATA_ROOT / f"corpus/{ds}_contriever_embs.npy")
-        if not args.corpus_texts:
-            args.corpus_texts = str(DATA_ROOT / f"corpus/{ds}_corpus_texts.json")
+    #     # Corpus cache (using InceptionRAG/data/corpus/)
+    #     if not args.corpus_embs:
+    #         args.corpus_embs = str(DATA_ROOT / f"corpus/{ds}_contriever_embs.npy")
+    #     if not args.corpus_texts:
+    #         args.corpus_texts = str(DATA_ROOT / f"corpus/{ds}_corpus_texts.json")
         
-        print(f"[Auto] Dataset: {ds}, Model: {model_folder}")
+    #     print(f"[Auto] Dataset: {ds}, Model: {model_folder}")
     
-    # Validate required paths
-    if not args.data or not args.suffix_pool or not args.corpus_embs or not args.corpus_texts:
-        print("Error: Must specify --dataset or provide all data paths manually")
-        return
+    # # Validate required paths
+    # if not args.data or not args.suffix_pool or not args.corpus_embs or not args.corpus_texts:
+    #     print("Error: Must specify --dataset or provide all data paths manually")
+    #     return
     
-    # Load data
-    print("\n[1/5] Loading data...")
-    with open(args.data, "r") as f:
-        all_data = json.load(f)
-    if args.limit:
-        all_data = all_data[:args.limit]
-    print(f"  Samples: {len(all_data)} (from {args.data})")
+    # # Load data
+    # print("\n[1/5] Loading data...")
+    # with open(args.data, "r") as f:
+    #     all_data = json.load(f)
+    # if args.limit:
+    #     all_data = all_data[:args.limit]
+    # print(f"  Samples: {len(all_data)} (from {args.data})")
     
-    # Load corpus
-    print("\n[2/5] Loading corpus...")
-    corpus_embs = np.load(args.corpus_embs)
-    with open(args.corpus_texts, "r") as f:
-        corpus_texts = json.load(f)
-    print(f"  Corpus: {len(corpus_texts)} docs")
+    # # Load corpus
+    # print("\n[2/5] Loading corpus...")
+    # corpus_embs = np.load(args.corpus_embs)
+    # with open(args.corpus_texts, "r") as f:
+    #     corpus_texts = json.load(f)
+    # print(f"  Corpus: {len(corpus_texts)} docs")
     
-    # Load Contriever
-    print("\n[3/5] Loading Contriever...")
-    contriever_tokenizer = AutoTokenizer.from_pretrained("facebook/contriever")
-    contriever = AutoModel.from_pretrained("facebook/contriever").eval()
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    contriever = contriever.to(device)
-    print(f"  Device: {device}")
+    # # Load Contriever
+    # print("\n[3/5] Loading Contriever...")
+    # contriever_tokenizer = AutoTokenizer.from_pretrained("facebook/contriever")
+    # contriever = AutoModel.from_pretrained("facebook/contriever").eval()
+    # device = "cuda" if torch.cuda.is_available() else "cpu"
+    # contriever = contriever.to(device)
+    # print(f"  Device: {device}")
     
-    # Load suffix pool
-    print("\n[4/5] Loading suffix pool...")
-    suffix_pool = SuffixPool(Path(args.suffix_pool))
+    # # Load suffix pool
+    # print("\n[4/5] Loading suffix pool...")
+    # suffix_pool = SuffixPool(Path(args.suffix_pool))
     
-    # ========== Stage 1.4: ZOSO Suffix Optimization (if --stage1 or --zoso-only) ==========
-    if args.stage1 or args.zoso_only:
-        print("\n  [Stage 1.4] ZOSO Suffix Optimization...")
-        print("  " + "-" * 50)
+    # # ========== Stage 1.4: ZOSO Suffix Optimization (if --stage1 or --zoso-only) ==========
+    # if args.stage1 or args.zoso_only:
+    #     print("\n  [Stage 1.4] ZOSO Suffix Optimization...")
+    #     print("  " + "-" * 50)
         
-        from .generation.zoso.zoso_optimizer import ZOSOConfig, ZOSOOptimizer, SuffixPool as ZOSOSuffixPool, DataManager
-        from openai import OpenAI
-        from sentence_transformers import SentenceTransformer
+    #     from .generation.zoso.zoso_optimizer import ZOSOConfig, ZOSOOptimizer, SuffixPool as ZOSOSuffixPool, DataManager
+    #     from openai import OpenAI
+    #     from sentence_transformers import SentenceTransformer
         
-        # ZOSO config
-        zoso_config = ZOSOConfig(
-            api_key=llm_config.api_key,
-            api_base_url=llm_config.api_base or ("https://api.openai.com/v1" if llm_config.provider != "hf" else ""),
-            model_name=llm_config.model,
-            anchor_rounds=args.zoso_anchor_rounds,
-            bridge_rounds=args.zoso_bridge_rounds,
-            golden_set_size=args.zoso_golden_size,
-            retrieval_top_k=args.retrieval_top_k,
-            retrieval_first_k=args.retrieval_first_k,
-        )
+    #     # ZOSO config
+    #     zoso_config = ZOSOConfig(
+    #         api_key=llm_config.api_key,
+    #         api_base_url=llm_config.api_base or ("https://api.openai.com/v1" if llm_config.provider != "hf" else ""),
+    #         model_name=llm_config.model,
+    #         anchor_rounds=args.zoso_anchor_rounds,
+    #         bridge_rounds=args.zoso_bridge_rounds,
+    #         golden_set_size=args.zoso_golden_size,
+    #         retrieval_top_k=args.retrieval_top_k,
+    #         retrieval_first_k=args.retrieval_first_k,
+    #     )
         
-        print(f"  Anchor rounds: {zoso_config.anchor_rounds}")
-        print(f"  Bridge rounds: {zoso_config.bridge_rounds}")
-        print(f"  Golden set size: {zoso_config.golden_set_size}")
+    #     print(f"  Anchor rounds: {zoso_config.anchor_rounds}")
+    #     print(f"  Bridge rounds: {zoso_config.bridge_rounds}")
+    #     print(f"  Golden set size: {zoso_config.golden_set_size}")
         
-        # Initialize ZOSO components
-        embedder = SentenceTransformer('all-mpnet-base-v2')
-        zoso_pool = ZOSOSuffixPool.from_file(Path(args.suffix_pool), embedder)
+    #     # Initialize ZOSO components
+    #     embedder = SentenceTransformer('all-mpnet-base-v2')
+    #     zoso_pool = ZOSOSuffixPool.from_file(Path(args.suffix_pool), embedder)
 
-        if llm_config.provider != "hf" and not llm_config.api_key:
-            print("Error: ZOSO requires an OpenAI-compatible API key. Set llm.api_key in config.yaml or pass --api-key / OPENAI_API_KEY.")
-            return
+    #     if llm_config.provider != "hf" and not llm_config.api_key:
+    #         print("Error: ZOSO requires an OpenAI-compatible API key. Set llm.api_key in config.yaml or pass --api-key / OPENAI_API_KEY.")
+    #         return
 
-        client = create_llm_client(llm_config) if llm_config.provider == "hf" else OpenAI(base_url=zoso_config.api_base_url, api_key=zoso_config.api_key)
-        data_mgr = DataManager(all_data, zoso_config, client)
+    #     client = create_llm_client(llm_config) if llm_config.provider == "hf" else OpenAI(base_url=zoso_config.api_base_url, api_key=zoso_config.api_key)
+    #     data_mgr = DataManager(all_data, zoso_config, client)
         
-        # Run optimization
-        optimizer = ZOSOOptimizer(
-            zoso_config, zoso_pool, data_mgr,
-            corpus_embs, corpus_texts,
-            contriever, contriever_tokenizer,
-        )
-        zoso_results = optimizer.optimize()
+    #     # Run optimization
+    #     optimizer = ZOSOOptimizer(
+    #         zoso_config, zoso_pool, data_mgr,
+    #         corpus_embs, corpus_texts,
+    #         contriever, contriever_tokenizer,
+    #     )
+    #     zoso_results = optimizer.optimize()
         
-        # Save ZOSO results
-        if args.dataset:
-            ds = args.dataset.lower()
-            model_folder = llm_config.model.replace(".", "-").replace(" ", "-")
-            zoso_output = DATA_ROOT / f"suffix_pool/zoso_results/{model_folder}/{ds}_zoso_results.json"
-            zoso_output.parent.mkdir(parents=True, exist_ok=True)
-        else:
-            zoso_output = _append_output_suffix(args.output, "_zoso", llm_config.model)
+    #     # Save ZOSO results
+    #     if args.dataset:
+    #         ds = args.dataset.lower()
+    #         model_folder = llm_config.model.replace(".", "-").replace(" ", "-")
+    #         zoso_output = DATA_ROOT / f"suffix_pool/zoso_results/{model_folder}/{ds}_zoso_results.json"
+    #         zoso_output.parent.mkdir(parents=True, exist_ok=True)
+    #     else:
+    #         zoso_output = _append_output_suffix(args.output, "_zoso", llm_config.model)
         
-        with open(zoso_output, "w") as f:
-            json.dump(zoso_results, f, indent=2, ensure_ascii=False)
+    #     with open(zoso_output, "w") as f:
+    #         json.dump(zoso_results, f, indent=2, ensure_ascii=False)
         
-        print(f"\n  ✓ Stage 1.4 Complete: ZOSO results saved to: {zoso_output}")
+    #     print(f"\n  ✓ Stage 1.4 Complete: ZOSO results saved to: {zoso_output}")
         
-        # Update args.zoso_results
-        args.zoso_results = str(zoso_output)
+    #     # Update args.zoso_results
+    #     args.zoso_results = str(zoso_output)
         
-        print(f"\n" + "=" * 60)
-        print(f"✓ Stage 1 Complete!")
-        print(f"  - Logic Traps: {args.data}")
-        print(f"  - ZOSO Suffix: {args.zoso_results}")
-        print("=" * 60)
+    #     print(f"\n" + "=" * 60)
+    #     print(f"✓ Stage 1 Complete!")
+    #     print(f"  - Logic Traps: {args.data}")
+    #     print(f"  - ZOSO Suffix: {args.zoso_results}")
+    #     print("=" * 60)
     
     # Load ZOSO results (optimal suffix indices)
     optimal_anchor_idx = 0
