@@ -38,7 +38,7 @@ parser.add_argument(
 parser.add_argument(
     "--limit",
     type=int,
-    default=3,
+    default=100,
     help="Number of queries to evaluate."
 )
 
