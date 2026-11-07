@@ -3,7 +3,7 @@
 
 llm:
   provider: "hf"               # openai / azure / custom / hf
-  api_key: ""                  # unused for local HF models
+  api_key: " "                  # unused for local HF models
   api_base: ""                 # optional custom endpoint
   model: "Qwen/Qwen2.5-3B-Instruct" # local HF model name
 

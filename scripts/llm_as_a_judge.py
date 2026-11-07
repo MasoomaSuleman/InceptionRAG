@@ -42,7 +42,7 @@ def extract_bool_from_text(text: str) -> bool:
         parsed = json.loads(cleaned)
 
     if isinstance(parsed, dict):
-        for key in ("different", "is_different", "llm_as_a_judge"):
+        for key in ("llm_judge_success", "different", "is_different", "llm_as_a_judge"):
             if key in parsed:
                 value = parsed[key]
                 if isinstance(value, bool):
@@ -94,7 +94,7 @@ def build_judge_prompt(question: str, answer: str, target_answer: str) -> str:
 def judge_item(client, item: Dict[str, Any]) -> bool:
     question = str(item.get("question") or "")
     answer = str(item.get("answer") or "")
-    ground_truth = item.get("ground_truth")
+    ground_truth = item.get("target")
 
     if ground_truth is None:
         return False

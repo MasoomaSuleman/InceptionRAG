@@ -717,7 +717,7 @@ def main():
     parser.add_argument("--api-base", type=str, default=None, help="Custom API base URL")
     parser.add_argument("--api-provider", type=str, default="openai", choices=["openai", "azure", "custom"],
                         help="API provider: openai, azure, or custom")
-    parser.add_argument("--model", type=str, default="gpt-4o-mini", help="Model name")
+    parser.add_argument("--model", type=str, default="Qwen/Qwen2.5-3B-Instruct", help="Model name")
     parser.add_argument("--azure-deployment", type=str, default=None, help="Azure deployment name")
     parser.add_argument("--azure-api-version", type=str, default="2024-02-15-preview", help="Azure API version")
     
