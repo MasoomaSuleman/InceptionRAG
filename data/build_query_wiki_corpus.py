@@ -13,11 +13,11 @@ Example:
       --output-dir /tmp/masoo20/inception_rag/custom_corpus \
       --dataset hotpotqa
 
-This script produces:
-  - {dataset}_wiki_corpus_texts.json
-  - {dataset}_wiki_contriever_embs.npy
+This script produces a single plain-text corpus file:
+  - {dataset}_wiki_corpus.txt
 
-which can be fed directly into run_attack.py via --corpus-texts and --corpus-embs.
+The output is a merged dump of all fetched Wikipedia article texts without
+chunking or embedding, and it reuses any cached article files that already exist.
 """
 
 import argparse
@@ -270,17 +270,47 @@ def fetch_wikipedia_page_text(curid: str, output_dir: Path | None = None, retrie
     return ""
 
 
+def _collect_cached_article_texts(wiki_cache_dir: Path) -> List[str]:
+    """Return the plain text for all cached Wikipedia article files."""
+    texts: List[str] = []
+    if not wiki_cache_dir.exists():
+        return texts
+
+    for article_dir in sorted(wiki_cache_dir.iterdir(), key=lambda p: p.name):
+        if not article_dir.is_dir():
+            continue
+        article_path = article_dir / "text.txt"
+        if not article_path.exists():
+            continue
+        text = article_path.read_text(encoding="utf-8").strip()
+        if text:
+            texts.append(text)
+    return texts
+
+
 def build_query_wiki_corpus(
     queries: List[Dict[str, str]],
     qrels_dir: Path,
     output_dir: Path,
     dataset_name: str,
     chunk_size: int = 500,
-) -> Tuple[List[str], np.ndarray]:
-    """Build a Wikipedia corpus from all qrels corpus ids attached to each query id."""
+) -> List[str]:
+    """Build a plain-text Wikipedia corpus from all qrels corpus ids attached to each query id.
+
+    This function checks whether the corpus is already available in the cache/output directory.
+    If cached article text exists, it reuses it and skips re-downloading. Missing pages are
+    fetched individually, and the final corpus is written as a single .txt file without chunking
+    or embedding.
+    """
     output_dir.mkdir(parents=True, exist_ok=True)
     wiki_cache_dir = output_dir / "wiki_pages"
     wiki_cache_dir.mkdir(parents=True, exist_ok=True)
+
+    combined_path = output_dir / f"{dataset_name}_wiki_corpus.txt"
+    existing_texts = _collect_cached_article_texts(wiki_cache_dir)
+    if combined_path.exists() and existing_texts:
+        print(f"[skip] Found existing combined corpus at {combined_path}; reusing cached Wikipedia pages.")
+        return existing_texts
 
     annotated_queries = annotate_queries_with_corpus_ids(queries, qrels_dir)
     query_ids = {record["id"] for record in annotated_queries if record.get("id")}
@@ -289,7 +319,7 @@ def build_query_wiki_corpus(
     texts: List[str] = []
     seen_corpus_ids: Set[str] = set()
 
-    print(f"[1/3] Mapping {len(query_ids)} queries to Wikipedia page ids...")
+    print(f"[1/2] Mapping {len(query_ids)} queries to Wikipedia page ids...")
     for record in tqdm(annotated_queries, desc="Queries"):
         qid = record.get("id")
         if not qid:
@@ -300,68 +330,37 @@ def build_query_wiki_corpus(
             seen_corpus_ids.add(corpus_id)
             article_dir = wiki_cache_dir / corpus_id
             article_path = article_dir / "text.txt"
+
             if article_path.exists():
                 cached_text = article_path.read_text(encoding="utf-8").strip()
                 if cached_text:
-                    print(f"[debug] using cached article for corpus_id={corpus_id} at {article_path}")
-                    for chunk in chunk_text(cached_text, chunk_size=chunk_size, overlap=80):
-                        if chunk.strip():
-                            texts.append(chunk)
+                    print(f"[debug] reusing cached article for corpus_id={corpus_id} at {article_path}")
+                    texts.append(cached_text)
                     continue
+
             page_text = fetch_wikipedia_page_text(corpus_id, output_dir=wiki_cache_dir)
             if not page_text:
                 print(f"[debug] missing text for corpus_id={corpus_id} saved_to={article_path}")
                 continue
             print(f"[debug] saved article for corpus_id={corpus_id} at {article_path}")
-            for chunk in chunk_text(page_text, chunk_size=chunk_size, overlap=80):
-                if chunk.strip():
-                    texts.append(chunk)
+            texts.append(page_text)
+
+    # If some article text already exists in wiki_pages but the combined corpus file is missing,
+    # include the cached texts and write the merged output once.
+    if not texts:
+        texts = existing_texts
 
     if not texts:
         raise RuntimeError(
             "No Wikipedia text was retrieved. Check that the qrels files contain matching query-id -> corpus-id entries."
         )
 
-    print(f"[2/3] Encoding {len(texts)} chunks with Contriever...")
-    from transformers import AutoModel, AutoTokenizer
+    merged_text = "\n\n".join(text.strip() for text in texts if text and text.strip())
+    combined_path.write_text(merged_text + ("\n" if merged_text and not merged_text.endswith("\n") else ""), encoding="utf-8")
 
-    tokenizer = AutoTokenizer.from_pretrained("facebook/contriever")
-    model = AutoModel.from_pretrained("facebook/contriever").eval()
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    model = model.to(device)
-
-    embeddings = []
-    for i in tqdm(range(0, len(texts), 32), desc="Encoding"):
-        batch = texts[i:i + 32]
-        inputs = tokenizer(
-            batch,
-            padding=True,
-            truncation=True,
-            max_length=512,
-            return_tensors="pt",
-        )
-        inputs = {k: v.to(device) for k, v in inputs.items()}
-
-        with torch.no_grad():
-            outs = model(**inputs)
-            embs = outs.last_hidden_state.mean(dim=1).cpu().numpy()
-
-        embeddings.append(embs)
-
-    embs = np.vstack(embeddings)
-    embs = embs / (np.linalg.norm(embs, axis=1, keepdims=True) + 1e-8)
-
-    text_path = output_dir / f"{dataset_name}_wiki_corpus_texts.json"
-    emb_path = output_dir / f"{dataset_name}_wiki_contriever_embs.npy"
-
-    with open(text_path, "w") as f:
-        json.dump(texts, f, ensure_ascii=False)
-    np.save(emb_path, embs)
-
-    print(f"[3/3] Saved corpus to {text_path}")
-    print(f"       Saved embeddings to {emb_path}")
-    print(f"       Total chunks: {len(texts)}")
-    return texts, embs
+    print(f"[2/2] Saved combined plain-text corpus to {combined_path}")
+    print(f"       Total article texts included: {len(texts)}")
+    return texts
 
 
 def main():
@@ -372,7 +371,7 @@ def main():
     parser.add_argument("--qrels-dir", type=str, required=True, help="Directory containing train.tsv/dev.tsv/test.tsv")
     parser.add_argument("--output-dir", type=str, required=True, help="Directory to write corpus texts and embeddings")
     parser.add_argument("--dataset", type=str, default="custom", help="Dataset name used for output files")
-    parser.add_argument("--chunk-size", type=int, default=500, help="Max characters per chunk")
+    parser.add_argument("--chunk-size", type=int, default=500, help="Unused: kept for compatibility; corpus is not chunked")
     args = parser.parse_args()
 
     queries_path = Path(args.queries)

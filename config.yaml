@@ -3,16 +3,19 @@
 
 llm:
   provider: "hf"               # openai / azure / custom / hf
-  api_key: ""                  # unused for local HF models
-  api_base: ""                 # optional custom endpoint
-  model: "Qwen/Qwen2.5-3B-Instruct" # local HF model name
+  api_key: "abcd"                  # unused for local HF models
+  api_base: "abcd"                 # optional custom endpoint
+  model: "Qwen/Qwen2.5-7B-Instruct" # local HF model name
 
 attack:
   retrieval_top_k: 20
   retrieval_first_k: 20
   cttft_neighbor_k: 10
   noise_injection: true
-  dual_injection: false
-  query_prefix: false
-  rerank_top_k: 6
-  use_reranker: false
+  dual_injection: true
+
+chunking:
+  strategy: "word"   # word or token
+  chunk_size: 100
+  chunk_overlap: 12
+  
