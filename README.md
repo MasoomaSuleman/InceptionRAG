@@ -46,24 +46,25 @@ mkdir -p \
     $TMPDIR
 ```
 
-## Run Code
+## Run InceptionRAG Baselines
 
 ```bash
 # 2. Download datasets and build corpus index
 # Dataset options are "nq", "hotpotqa", "msmarco"
-python data/download_datasets.py --dataset nq --output-dir /tmp/$USER/InceptionRAG_data
+python data/download_datasets.py --dataset nq/hotpotqa/msmarco --output-dir path/to/data_folder
 
 
 # 3. Configure (add your API key)
 # Edit config.yaml with your API credentials
+# Set the
 
 # 4. Run attack with data
 # only use parameter --stage1 for first time to generate adversarial data
-python -m InceptionRAG.run_attack --config config.yaml --dataset nq --limit 100 --data-root /tmp/$USER/InceptionRAG_data --output /tmp/$USER/InceptionRAG_data/results/attack_results.json --add-gt --llm-judge --stage1
+python -m run_attack.py --config config.yaml --dataset nq/hotpotqa/msmarco --limit 100 --data-root path/to/data_folder --output /path/to/results/output.json --add-gt --llm-judge --stage1
 
 ```
 
-## Baselines
+### Baselines
 To get the baseline results for each dataset in InceptionRAG, run the following command:
 ```bash
 python run_baselines.py --data-root path/to/data --output-dir /path/to/results-dir --dataset nq/hotpotqa/msmarco
@@ -71,7 +72,7 @@ python run_baselines.py --data-root path/to/data --output-dir /path/to/results-d
 
 This code reads each attack configuration in the `baselines_config.txt` file. The file is structured as follows, if you wish to change it:
 ```
-attack-name
+#attack-name
 attack:	
   retrieval_top_k: 20
   retrieval_first_k: 20
@@ -80,7 +81,7 @@ attack:
   dual_injection: false
   query_prefix: false
   
-attack-name
+#attack-name
 attack:	
   retrieval_top_k: 20
   retrieval_first_k: 20
@@ -93,7 +94,27 @@ attack:
 ```
 
 
+## Run InceptionRAG CHUNKING
+ ```bash
+# download & extract the wiki documents related to the requested dataset
+python data/download_wiki_corpus.py --dataset nq/hotpotqa/msmarco --data-root path/to/data_folder
 
+# configure config
+# USE CONFIG_MODIFIED
+
+# run attack with chunking
+python run_attack.py --config config_modified.yaml --llm-judge --add-gt --dataset nq/hotpotqa/msmarco --data-root /path/to/data_folder --output path/to/results/output.json
+ ```
+
+### configurations
+Set the configuration in `configs/config_modified.yaml`
+
+Each configurations run can be found in `configs/chunker_configs.txt`
+
+To run the chunker configurations consecutively, run the `run_chunkings.py` script with the command below. The script reads the configurations in the `configs/chunker_configs.txt` file and runs the `run_attack.py` code for each configuration.
+```bash
+python run_chunkings.py --dataset nq/hotpotqa/msmarco --data-root path/to/data_folder --output-dir path/to/output_di
+```
 
 
 For a full run, pass the `/tmp` file paths directly:

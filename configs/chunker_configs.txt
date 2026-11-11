@@ -1,0 +1,167 @@
+#attack-word-100-12-50-20
+attack: 
+  retrieval_top_k: 20
+  retrieval_first_k: 50
+  cttft_neighbor_k: 10
+  noise_injection: true
+  dual_injection: true
+  
+attack_changes:
+  chunk: true
+  chunking_strategy: "word-based"
+  chunk_size: 100
+  chunk_overlap: 12
+  
+#attack-word-100-12-50-50
+attack: 
+  retrieval_top_k: 50
+  retrieval_first_k: 50
+  cttft_neighbor_k: 10
+  noise_injection: true
+  dual_injection: true
+  
+attack_changes:
+  chunk: true
+  chunking_strategy: "word-based"
+  chunk_size: 100
+  chunk_overlap: 12
+  
+#attack-word-200-25-50-20
+attack: 
+  retrieval_top_k: 20
+  retrieval_first_k: 50
+  cttft_neighbor_k: 10
+  noise_injection: true
+  dual_injection: true
+  
+attack_changes:
+  chunk: true
+  chunking_strategy: "word-based"
+  chunk_size: 200
+  chunk_overlap: 25
+  
+#attack-word-200-25-50-50
+attack: 
+  retrieval_top_k: 50
+  retrieval_first_k: 50
+  cttft_neighbor_k: 10
+  noise_injection: true
+  dual_injection: true
+  
+attack_changes:
+  chunk: true
+  chunking_strategy: "word-based"
+  chunk_size: 200
+  chunk_overlap: 25
+  
+#attack-word-400-50-50-20
+attack: 
+  retrieval_top_k: 20
+  retrieval_first_k: 50
+  cttft_neighbor_k: 10
+  noise_injection: true
+  dual_injection: true
+  
+attack_changes:
+  chunk: true
+  chunking_strategy: "word-based"
+  chunk_size: 400
+  chunk_overlap: 50
+  
+#attack-word-400-50-50-50
+attack: 
+  retrieval_top_k: 50
+  retrieval_first_k: 50
+  cttft_neighbor_k: 10
+  noise_injection: true
+  dual_injection: true
+  
+attack_changes:
+  chunk: true
+  chunking_strategy: "word-based"
+  chunk_size: 400
+  chunk_overlap: 50
+  
+#attack-token-256-32-50-20
+attack: 
+  retrieval_top_k: 20
+  retrieval_first_k: 50
+  cttft_neighbor_k: 10
+  noise_injection: true
+  dual_injection: true
+  
+attack_changes:
+  chunk: true
+  chunking_strategy: "token-based"
+  chunk_size: 256
+  chunk_overlap: 32
+  
+#attack-token-256-32-50-50
+attack: 
+  retrieval_top_k: 50
+  retrieval_first_k: 50
+  cttft_neighbor_k: 10
+  noise_injection: true
+  dual_injection: true
+  
+attack_changes:
+  chunk: true
+  chunking_strategy: "token-based"
+  chunk_size: 256
+  chunk_overlap: 32
+  
+#attack-token-512-64-50-20
+attack: 
+  retrieval_top_k: 20
+  retrieval_first_k: 50
+  cttft_neighbor_k: 10
+  noise_injection: true
+  dual_injection: true
+  
+attack_changes:
+  chunk: true
+  chunking_strategy: "token-based"
+  chunk_size: 512
+  chunk_overlap: 64
+  
+#attack-token-512-64-50-50
+attack: 
+  retrieval_top_k: 50
+  retrieval_first_k: 50
+  cttft_neighbor_k: 10
+  noise_injection: true
+  dual_injection: true
+  
+attack_changes:
+  chunk: true
+  chunking_strategy: "token-based"
+  chunk_size: 512
+  chunk_overlap: 64
+  
+#attack-token-1024-128-50-20
+attack: 
+  retrieval_top_k: 20
+  retrieval_first_k: 50
+  cttft_neighbor_k: 10
+  noise_injection: true
+  dual_injection: true
+  
+attack_changes:
+  chunk: true
+  chunking_strategy: "token-based"
+  chunk_size: 1024
+  chunk_overlap: 128
+  
+#attack-token-1024-128-50-50
+attack: 
+  retrieval_top_k: 50
+  retrieval_first_k: 50
+  cttft_neighbor_k: 10
+  noise_injection: true
+  dual_injection: true
+  
+attack_changes:
+  chunk: true
+  chunking_strategy: "token-based"
+  chunk_size: 1024
+  chunk_overlap: 128

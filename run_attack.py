@@ -7,8 +7,9 @@ import time
 import yaml
 import numpy as np
 import torch
+from tqdm import tqdm
 from pathlib import Path
-from typing import List, Dict, Tuple, Optional, Set
+from typing import List, Dict, Tuple, Optional, Sequence
 from dataclasses import dataclass, field
 
 if __package__ in (None, ""):
@@ -58,6 +59,11 @@ class InceptionRAGConfig:
     hodor_model: str = "gemini-2.0-flash"  # Model for HODOR voting
 
     llm_judge: bool = False
+
+    chunking: bool = False
+    chunking_strategy: str = "word-based"
+    chunk_size: int = 256
+    chunk_overlap: int = 12
 
 
 # ============================================================================
@@ -170,7 +176,7 @@ class TwoStageRetriever:
             emb = self.contriever(**inputs).last_hidden_state.mean(dim=1).cpu().numpy()[0]
         return emb / (np.linalg.norm(emb) + 1e-8)
     
-    def retrieve(self, question: str, poisoned_texts: List[str]) -> Tuple[List[str], int]:
+    def retrieve(self, question: str, poisoned_texts: List[str] = None) -> Tuple[List[str], int]:
         """
         Two-stage retrieval:
         Stage 1: Retrieve first_k from corpus
@@ -181,6 +187,10 @@ class TwoStageRetriever:
         # Stage 1
         corpus_scores = self.corpus_embs @ query_emb
         top_indices = np.argsort(corpus_scores)[::-1][:self.config.retrieval_first_k]
+
+        if self.config.chunking:
+            final_indices = top_indices[:self.config.retrieval_top_k]
+            return [self.corpus_texts[i] for i in final_indices], 0
         
         # Stage 2
         num_corpus = len(top_indices)
@@ -456,46 +466,47 @@ class InceptionRAGAttacker:
             self.stats["l1_success"] += 1
             return result
         print(f"✗")
-        
-        # ========== L2: Anchor Sweep ==========
-        print(f"    [L2] Anchor sweep...", end=" ", flush=True)
-        best_anchor = self.global_anchor
-        
-        for i, a_idx in enumerate(self.anchor_neighbors):
-            test_anchor = self.pool.anchors[a_idx]
-            success, answer, context = self._try_attack(item, test_anchor, self.global_bridge, question)
-            result["queries"] += 1
-            result["context"] = context
+
+        if not self.config.chunking:
+            # ========== L2: Anchor Sweep ==========
+            print(f"    [L2] Anchor sweep...", end=" ", flush=True)
+            best_anchor = self.global_anchor
             
-            if success:
-                print(f"✓ [{i+1}]")
-                print(f"    Answer: {answer[:60]}..." if len(answer) > 60 else f"    Answer: {answer}")
-                result["attack_success"] = True
-                result["level"] = 2
-                result["answer"] = answer
-                best_anchor = test_anchor
-                self.stats["l2_success"] += 1
-                return result
-        print(f"✗")
-        
-        # ========== L3: Bridge Sweep ==========
-        print(f"    [L3] Bridge sweep...", end=" ", flush=True)
-        
-        for i, b_idx in enumerate(self.bridge_neighbors):
-            test_bridge = self.pool.bridges[b_idx]
-            success, answer, context = self._try_attack(item, best_anchor, test_bridge, question)
-            result["queries"] += 1
-            result["context"] = context
+            for i, a_idx in enumerate(self.anchor_neighbors):
+                test_anchor = self.pool.anchors[a_idx]
+                success, answer, context = self._try_attack(item, test_anchor, self.global_bridge, question)
+                result["queries"] += 1
+                result["context"] = context
+                
+                if success:
+                    print(f"✓ [{i+1}]")
+                    print(f"    Answer: {answer[:60]}..." if len(answer) > 60 else f"    Answer: {answer}")
+                    result["attack_success"] = True
+                    result["level"] = 2
+                    result["answer"] = answer
+                    best_anchor = test_anchor
+                    self.stats["l2_success"] += 1
+                    return result
+            print(f"✗")
             
-            if success:
-                print(f"✓ [{i+1}]")
-                print(f"    Answer: {answer[:60]}..." if len(answer) > 60 else f"    Answer: {answer}")
-                result["attack_success"] = True
-                result["level"] = 3
-                result["answer"] = answer
-                self.stats["l3_success"] += 1
-                return result
-        print(f"✗")
+            # ========== L3: Bridge Sweep ==========
+            print(f"    [L3] Bridge sweep...", end=" ", flush=True)
+            
+            for i, b_idx in enumerate(self.bridge_neighbors):
+                test_bridge = self.pool.bridges[b_idx]
+                success, answer, context = self._try_attack(item, best_anchor, test_bridge, question)
+                result["queries"] += 1
+                result["context"] = context
+                
+                if success:
+                    print(f"✓ [{i+1}]")
+                    print(f"    Answer: {answer[:60]}..." if len(answer) > 60 else f"    Answer: {answer}")
+                    result["attack_success"] = True
+                    result["level"] = 3
+                    result["answer"] = answer
+                    self.stats["l3_success"] += 1
+                    return result
+            print(f"✗")
         print(f"    Answer: {answer[:60]}..." if len(answer) > 60 else f"    Answer: {answer}")
 
         result["answer"] = answer
@@ -702,6 +713,197 @@ class InceptionRAGAttacker:
 
 
 # ============================================================================
+# Chunking
+# ============================================================================
+
+    
+def build_adv_corpus(
+        adv_texts: Sequence[dict], 
+        anchor_suffix: str, 
+        bridge_suffix: str, 
+        config: InceptionRAGConfig,
+        output_path: str
+    ) -> List[str]:
+    adv_corpus: List[str] = []
+
+    for item in adv_texts:
+        adv = item.get("ad_text") or {}
+        question = str(item.get("question") or item.get("text") or "").strip()
+        attribute_doc = str(adv.get("attribute_document") or adv.get("text1") or "").strip()
+        bridge_doc = str(adv.get("bridge_document") or adv.get("text2") or "").strip()
+
+        noisy_anchor = inject_polymorphic_noise(anchor_suffix, config.noise_injection)
+        noisy_bridge = inject_polymorphic_noise(bridge_suffix, config.noise_injection)
+
+        attribute_doc = f"{attribute_doc} {noisy_anchor}" if attribute_doc else ""
+        bridge_doc = f"{bridge_doc} {noisy_bridge}" if bridge_doc else ""
+
+        attribute_doc = inject_dual_ended(attribute_doc, question, config)
+        bridge_doc = inject_dual_ended(bridge_doc, question, config)
+
+        adv_corpus.append(attribute_doc)
+        adv_corpus.append(bridge_doc)
+
+    with open(output_path, "w", encoding="utf-8") as f:
+        for i, text in enumerate(adv_corpus):
+            text = text.strip()
+            if not text: continue
+
+            json.dump({
+                "id": f"adv-{i}",
+                "title": "",
+                "text": text,
+            }, f, ensure_ascii=False)
+
+            f.write("\n")
+
+def load_jsonl_corpus(corpus_file: Path) -> List[str]:
+    corpus = []
+
+    with open(corpus_file, "r", encoding="utf-8") as f:
+
+        for line in f:
+
+            line = line.strip()
+
+            if not line:
+                continue
+
+            doc = json.loads(line)
+
+            title = doc.get("title", "").strip()
+            text = doc.get("text", "").strip()
+
+            if not text:
+                continue
+
+            if title:
+                corpus.append(f"{title} {text}")
+            else:
+                corpus.append(text)
+
+    return corpus
+
+
+def merge_wiki_adv(wiki_file: Path, adv_file: Path) -> List[str]:
+    wiki_docs = load_jsonl_corpus(wiki_file)
+    adv_docs = load_jsonl_corpus(adv_file)
+
+
+    return wiki_docs[:len(adv_docs)] + adv_docs
+
+def get_bert_tokenizer():
+    """Load the BERT tokenizer once (it used to be reloaded for every document)."""
+    global _BERT_TOKENIZER, _BERT_TOKENIZER_FAILED
+    if _BERT_TOKENIZER is None and not _BERT_TOKENIZER_FAILED:
+        try:
+            from transformers import AutoTokenizer
+ 
+            _BERT_TOKENIZER = AutoTokenizer.from_pretrained("bert-base-uncased")
+        except Exception:
+            _BERT_TOKENIZER_FAILED = True
+    return _BERT_TOKENIZER
+
+
+def word_tokenizer(text: str) -> List[str]:
+    try:
+        import nltk
+        from nltk.tokenize import word_tokenize
+
+        return word_tokenize(text)
+    except Exception:
+        return re.findall(r"\b\w+\b|[^\w\s]", text)
+
+def token_tokenizer(text: str) -> List[str]:
+    tokenizer = get_bert_tokenizer()
+    if tokenizer is not None:
+        return tokenizer.tokenize(text)
+    
+    # Reasonable fallback when a tokenizer model is unavailable locally.
+    return re.findall(r"\w+|[\.,!?;:()\[\]{}\"'/-]", text)
+
+
+def join_tokens(tokens, strategy):
+    if strategy.startswith("word"):
+        return " ".join(tokens).strip()
+ 
+    tokenizer = get_bert_tokenizer()
+    if tokenizer is not None:
+        # Correctly merges WordPiece pieces ("##ing") back into words
+        return tokenizer.convert_tokens_to_string(list(tokens)).strip()
+    return " ".join(tokens).strip()
+
+
+def chunk_texts(texts: List[str], config: InceptionRAGConfig):
+    if config.chunk_size <= 0:
+        raise ValueError("chunk_size must be > 0")
+    if config.chunk_overlap < 0:
+        raise ValueError("chunk_overlap must be >= 0")
+    if config.chunk_overlap >= config.chunk_size:
+        config.chunk_overlap = max(0, config.chunk_size - 1)
+
+    tokenizer = word_tokenizer if "word" in config.chunking_strategy else token_tokenizer
+    step = max(1, config.chunk_size - config.chunk_overlap)
+
+    chunks = []
+
+    for text in tqdm(texts, desc="Chunking Documents", unit="doc", dynamic_ncols=True):
+        cleaned = (text or "").strip()
+        if not cleaned:
+            continue
+        tokens = tokenizer(cleaned)
+        if not tokens:
+            continue
+
+        for start in range(0, len(tokens), step):
+            end = min(len(tokens), start + config.chunk_size)
+            chunk_tokens = tokens[start:end]
+            if not chunk_tokens:
+                continue
+            chunk_text = join_tokens(chunk_tokens, config.chunking_strategy)
+            if chunk_text:
+                chunks.append(chunk_text)
+            if end >= len(tokens):
+                break
+
+    return chunks
+
+
+def embed_chunks(chunks: Sequence[str]) -> np.ndarray:
+    if not chunks:
+        return np.zeros((0, 1), dtype=np.float32)
+
+    try:
+        from sentence_transformers import SentenceTransformer
+
+        model = SentenceTransformer("all-mpnet-base-v2")
+        embs = model.encode(list(chunks), convert_to_numpy=True, show_progress_bar=True)
+        return np.asarray(embs, dtype=np.float32)
+    except Exception:
+        rng = np.random.default_rng(0)
+        return np.asarray([rng.normal(0, 1, 768).astype(np.float32) for _ in chunks], dtype=np.float32)
+
+def save_chunk_embeds(
+        output_dir: Path, 
+        dataset:str, 
+        chunks: Sequence[str], 
+        embeddings:np.ndarray, 
+        config: InceptionRAGConfig,
+    ):
+    output_dir.mkdir(parents=True, exist_ok=True)
+    stem = f"{dataset}-{config.chunking_strategy}-{config.chunk_size}-{config.chunk_overlap}"
+    json_path = output_dir / f"{stem}.json"
+    npy_path = output_dir / f"{stem}.npy"
+
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(list(chunks), f, ensure_ascii=False, indent=2)
+
+    np.save(npy_path, embeddings)
+
+    return json_path, npy_path
+    
+
+# ============================================================================
 # CLI Entry Point
 # ============================================================================
 
@@ -757,6 +959,15 @@ def main():
 
     parser.add_argument("--add-gt", action="store_true", help="add ground truth information to ourput JSON file")
     parser.add_argument("--llm-judge", action="store_true", help="Use an llm as judge to get more accurate ASR")
+
+    parser.add_argument("--chunk", action="store_true", help="Use chunking")
+    parser.add_argument("--adv-docs", type=str, default=None, help="path to adversarial passages")
+    parser.add_argument("--wiki-corpus", type=str, default=None, help="path to wiki corpus")
+    parser.add_argument("--chunking-strategy", type=str, default="word-based", choices=["word-based", "token-based"], help="word-based or token-based strategy to chunk corpus")
+    parser.add_argument("--chunk-size", type=int, default=256, help="length of each chunk")
+    parser.add_argument("--chunk-overlap", type=int, default=12, help="overlap between adjacent chunks")
+    parser.add_argument("--custom-corpus_texts", type=str, default=None, help="chunked corpus texts JSON")
+    parser.add_argument("--custom-corpus_embs", type=str, default=None, help="chunked corpus embeddings NPY")
     
     args = parser.parse_args()
     
@@ -775,7 +986,17 @@ def main():
         cttft_neighbor_k = attack_cfg.get("cttft_neighbor_k", 10)
         noise_injection = attack_cfg.get("noise_injection", True)
         dual_injection = attack_cfg.get("dual_injection", False)
-        query_prefix = attack_cfg.get("query_prefix", False)
+
+        attack_changes_cfg = config_data.get("attack_changes", {})
+        chunk = attack_changes_cfg.get("chunk", False)
+        chunking_strategy = attack_changes_cfg.get("chunking_strategy", "word-based")
+        chunk_size = attack_changes_cfg.get("chunk_size", 256)
+        chunk_overlap = attack_changes_cfg.get("chunk_overlap", 12)
+
+        print("chunking:", chunk)
+        print("strategy:", chunking_strategy)
+        print("size:", chunk_size)
+        print("overlap:", chunk_overlap)
 
         # Full config
         config = InceptionRAGConfig(
@@ -788,6 +1009,10 @@ def main():
             use_hodor=args.hodor,
             hodor_model=args.hodor_model,
             llm_judge=args.llm_judge,
+            chunking=chunk,
+            chunking_strategy=chunking_strategy,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap
         )
     else:
         # Build from CLI args
@@ -817,6 +1042,10 @@ def main():
             use_hodor=args.hodor,
             hodor_model=args.hodor_model,
             llm_judge=args.llm_judge,
+            chunking=args.chunk,
+            chunking_strategy=args.chunking_strategy,
+            chunk_size=args.chunk_size,
+            chunk_overlap=args.chunk_overlap
         )
     
     print("=" * 60)
@@ -998,15 +1227,8 @@ def main():
         all_data = all_data[:args.limit]
     print(f"  Samples: {len(all_data)} (from {args.data})")
     
-    # Load corpus
-    print("\n[2/5] Loading corpus...")
-    corpus_embs = np.load(args.corpus_embs)
-    with open(args.corpus_texts, "r") as f:
-        corpus_texts = json.load(f)
-    print(f"  Corpus: {len(corpus_texts)} docs")
-    
     # Load Contriever
-    print("\n[3/5] Loading Contriever...")
+    print("\n[2/5] Loading Contriever...")
     contriever_tokenizer = AutoTokenizer.from_pretrained("facebook/contriever")
     contriever = AutoModel.from_pretrained("facebook/contriever").eval()
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -1014,11 +1236,20 @@ def main():
     print(f"  Device: {device}")
     
     # Load suffix pool
-    print("\n[4/5] Loading suffix pool...")
+    print("\n[3/5] Loading suffix pool...")
     suffix_pool = SuffixPool(Path(args.suffix_pool))
+
+        
     
     # ========== Stage 1.4: ZOSO Suffix Optimization (if --stage1 or --zoso-only) ==========
     if args.stage1 or args.zoso_only:
+        # Load corpus
+        print("\n[4/5] Loading corpus...")
+        corpus_embs = np.load(args.corpus_embs)
+        with open(args.corpus_texts, "r") as f:
+            corpus_texts = json.load(f)
+        print(f"  Corpus: {len(corpus_texts)} docs")
+
         print("\n  [Stage 1.4] ZOSO Suffix Optimization...")
         print("  " + "-" * 50)
         
@@ -1093,6 +1324,71 @@ def main():
         optimal_bridge_idx = zoso.get("best", {}).get("bridge_idx", 0)
         print(f"  ZOSO optimal: anchor={optimal_anchor_idx}, bridge={optimal_bridge_idx} (from {args.zoso_results})")
     
+    # ========== CHUNKING ==========
+    if config.chunking:
+        print(f"\n[3.5/5] Chunking corpus...")
+        print("Loadinng adversarial documents...")
+        if args.adv_docs:
+            file = Path(args.adv_docs)
+            if file.exists():
+                adv_file = file
+            else:
+                print(f"Adversarial Documents were not found at {file}")
+                return
+        else:
+            file = DATA_ROOT / f"custom_corpus/{ds}/adv_docs.json"
+            if file.exists():
+                adv_file = file
+            else:
+                anchor_suffix = suffix_pool.anchors[optimal_anchor_idx]
+                bridge_suffix = suffix_pool.bridges[optimal_bridge_idx]
+                adv_file = DATA_ROOT / f"custom_corpus/{ds}/adv_docs.json"
+                build_adv_corpus(all_data, anchor_suffix, bridge_suffix, config, adv_file)
+                print(f"Saved adversarial documents to {adv_file}")
+
+        print("Loading wiki corpus...")
+        if args.wiki_corpus:
+            file = Path(args.wiki_corpus)
+            if file.exists():
+                wiki_file = file
+            else:
+                print(f"Wiki Corpus not found at {file}")
+                return
+
+        else:
+            file = DATA_ROOT / f"custom_corpus/{ds}/wiki_corpus.jsonl"
+            if file.exists():
+                wiki_file = file
+            else:
+                print(f"Wiki Corpus not found at {file}")
+                print("Please run \'data/download_wiki_corpus.py\' first")
+                return
+
+        if not args.custom_corpus_texts or not args.custom_corpus_embs:
+            text_file = DATA_ROOT / f"custom_corpus/{ds}/{ds}-{config.chunking_strategy}-{config.chunk_size}-{config.chunk_overlap}.json"
+            embs_file = DATA_ROOT / f"custom_corpus/{ds}/{ds}-{config.chunking_strategy}-{config.chunk_size}-{config.chunk_overlap}.npy"
+            if text_file.exists() and embs_file.exists():
+                args.corpus_texts = text_file
+                args.corpus_embs = embs_file
+            else:
+                print("Creating poisoned Corpus...")
+                merged_docs = merge_wiki_adv(wiki_file, adv_file)
+                chunks = chunk_texts(merged_docs, config)
+                print("Embedding chunks...")
+                embeddings = embed_chunks(chunks)
+                custom_corpus_path = DATA_ROOT / f"custom_corpus/{ds}"
+                args.corpus_texts, args.corpus_embs = save_chunk_embeds(custom_corpus_path, ds, chunks, embeddings, config)
+                print(f"Save custom corpus to {args.corpus_texts} and {args.corpus_embs}")
+        else:
+            args.corpus_texts = args.custom_corpus_texts
+            args.corpus_embs = args.custom_corpus_embs
+
+    print("\n[4/5] Loading corpus...")
+    corpus_embs = np.load(args.corpus_embs)
+    with open(args.corpus_texts, "r") as f:
+        corpus_texts = json.load(f)
+    print(f"  Corpus: {len(corpus_texts)} docs")
+
     # ========== Stage 3: Attack (if not --skip-attack) ==========
     if args.skip_attack:
         print("\n[Skipped] Stage 3 Attack (--skip-attack)")

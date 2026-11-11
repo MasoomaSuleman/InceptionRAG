@@ -1,0 +1,23 @@
+# InceptionRAG Configuration
+# Copy from config.yaml.template and fill in your API credentials
+
+#llm:
+#  provider: "openai"               # openai / azure / custom / hf
+#  api_key: ""                  # unused for local HF models
+#  api_base: ""                 # optional custom endpoint
+#  model: "gpt-4o-mini" # local HF model name
+  
+llm:
+  provider: "hf"
+  api_key: "EMPTY"
+  api_base: "http://localhost:8000/v1"
+  model: "Qwen/Qwen2.5-3B-Instruct" #"zai-org/GLM-5.3"
+
+attack: 
+  retrieval_top_k: 10
+  retrieval_first_k: 20
+  cttft_neighbor_k: 10
+  noise_injection: true
+  dual_injection: true
+
+  

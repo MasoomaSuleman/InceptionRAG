@@ -9,8 +9,8 @@ import subprocess
 from pathlib import Path
 import os
 
-CONFIG_FILE = Path("config.yaml")
-BASELINE_FILE = Path("baseline_configs.txt")
+CONFIG_FILE = Path("configs/config.yaml")
+BASELINE_FILE = Path("configs/baseline_configs.txt")
 
 parser = argparse.ArgumentParser(
     description="Run all baseline attack configurations."
@@ -40,6 +40,12 @@ parser.add_argument(
     type=int,
     default=100,
     help="Number of queries to evaluate."
+)
+
+parser.add_argument(
+    "--stage1",
+    action="store_true",
+    help="whether to run stage 1 on first configuration"
 )
 
 args = parser.parse_args()
@@ -73,12 +79,12 @@ with open(BASELINE_FILE) as f:
         # Remove newline and convert any tabs to spaces
         line = line.rstrip("\n").expandtabs(2)
 
-        if line.strip() == "":
+        if line.strip().startswith("#"):
             if current:
                 blocks.append(current)
                 current = []
-        else:
-            current.append(line)
+        
+        current.append(line)
 
 if current:
     blocks.append(current)
@@ -125,7 +131,7 @@ for block in blocks:
         "--llm-judge",
     ]
 
-    if first:
+    if first and args.stage1:
        cmd.append("--stage1")
        first = False
 

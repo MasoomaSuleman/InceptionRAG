@@ -1,4 +1,4 @@
-attack-20-20
+#attack-20-20
 attack:	
   retrieval_top_k: 20
   retrieval_first_k: 20
@@ -6,7 +6,7 @@ attack:
   noise_injection: true
   dual_injection: true
   
-attack-50-20
+#attack-50-20
 attack:	
   retrieval_top_k: 20
   retrieval_first_k: 50
@@ -14,7 +14,7 @@ attack:
   noise_injection: true
   dual_injection: true
   
-attack-20-10
+#attack-20-10
 attack:	
   retrieval_top_k: 10
   retrieval_first_k: 20
