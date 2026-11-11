@@ -106,6 +106,9 @@ python data/download_wiki_corpus.py --dataset nq/hotpotqa/msmarco --data-root pa
 python run_attack.py --config config_modified.yaml --llm-judge --add-gt --dataset nq/hotpotqa/msmarco --data-root /path/to/data_folder --output path/to/results/output.json
  ```
 
+The `download_wiki_corpus.py` may take a while. This script will download a large file that contains all the necessary documents for the requrested dataset. It will then determine the documents needed for the set of sample queries (`data_root/samples/{dataset}_queries_100.json`) and search for these documents in the downloaded file to create a mini corpus.
+
+
 ### configurations
 Set the configuration in `configs/config_modified.yaml`
 
