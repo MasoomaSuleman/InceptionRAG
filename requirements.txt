@@ -5,6 +5,7 @@
 openai
 numpy
 torch
+nltk
 
 # Retrieval
 transformers

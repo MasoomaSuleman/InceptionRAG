@@ -10,7 +10,6 @@ from pathlib import Path
 import os
 
 CONFIG_FILE = Path("configs/config_modified.yaml")
-BASELINE_FILE = Path("configs/chunker_configs.txt")
 
 parser = argparse.ArgumentParser(
     description="Run all baseline attack configurations."
@@ -48,6 +47,13 @@ parser.add_argument(
     help="whether to run stage 1 on first configuration"
 )
 
+parser.add_argument(
+    "--configs-txt",
+    type= str,
+    default="configs/baseline_configs.txt",
+    help="file containing all configs to run"
+)
+
 args = parser.parse_args()
 
 # ---------------------------------------------------------------------
@@ -74,12 +80,12 @@ config_prefix = original[:attack_start]
 blocks = []
 current = []
 
-with open(BASELINE_FILE) as f:
+with open(args.configs_txt) as f:
     for line in f:
         # Remove newline and convert any tabs to spaces
         line = line.rstrip("\n").expandtabs(2)
 
-        if line.strip().startswith("#"):
+        if line.strip().startswith("##"):
             if current:
                 blocks.append(current)
                 current = []
@@ -96,7 +102,7 @@ first = True
 
 for block in blocks:
 
-    output_name = block[0].strip()[1:]
+    output_name = block[0].strip()[2:]
     attack_yaml = "\n".join(block[1:]).expandtabs(2)
 
     with open(CONFIG_FILE, "w") as f:
@@ -129,6 +135,7 @@ for block in blocks:
         str(output_file),
         "--add-gt",
         "--llm-judge",
+        "--similarity",
     ]
 
     if first and args.stage1:

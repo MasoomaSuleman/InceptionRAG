@@ -59,11 +59,16 @@ class InceptionRAGConfig:
     hodor_model: str = "gemini-2.0-flash"  # Model for HODOR voting
 
     llm_judge: bool = False
+    measure_similarity: bool = False
 
     chunking: bool = False
     chunking_strategy: str = "word-based"
     chunk_size: int = 256
     chunk_overlap: int = 12
+
+    reranker: bool = False
+    reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    reranker_top_k: int = 5
 
 
 # ============================================================================
@@ -145,6 +150,59 @@ def inject_dual_ended(text: str, query: str, config: InceptionRAGConfig) -> str:
     return f"{query}\n\n{text}{config.footer_separator}{footer}"
 
 # ============================================================================
+# Passage Re-ranker (ADDED)
+# ============================================================================
+
+class PassageReranker:
+    """Real cross-encoder reranker that checks the local HF cache first and downloads only if needed."""
+
+    def __init__(self, model_name: str = "cross-encoder/ms-marco-MiniLM-L-6-v2", top_k: Optional[int] = None):
+        self.model_name = model_name
+        self.top_k = top_k
+        self.cross_encoder = None
+        self._init_model()
+
+    def _init_model(self):
+        try:
+            from huggingface_hub import try_to_load_from_cache, snapshot_download
+            from sentence_transformers import CrossEncoder
+
+            hf_cache = os.environ.get("HF_HOME") or os.environ.get("TRANSFORMERS_CACHE") or f"/tmp/{os.environ.get("USER")}/hf-cache"
+            os.makedirs(hf_cache, exist_ok=True)
+
+            cache_hit = try_to_load_from_cache(
+                repo_id=self.model_name,
+                filename="config.json",
+                cache_dir=hf_cache,
+            )
+            if cache_hit is None:
+                snapshot_download(repo_id=self.model_name, cache_dir=hf_cache)
+
+            self.cross_encoder = CrossEncoder(self.model_name)
+        except Exception as e:
+            print(f"[PassageReranker] failed to load {self.model_name}: {e}")
+            self.cross_encoder = None
+
+    def rank(self, query: str, passages: List[str], top_k: Optional[int] = None) -> Optional[List[int]]:
+        """Return passage indices ordered best-first, or None if reranking isn't possible."""
+        if not passages or not self.cross_encoder is None:
+            return None
+        try:
+            scores = self.cross_encoder.predict([(query, p) for p in passages])
+        except Exception:
+            return None
+
+        order = np.argsort(np.asarray(scores, dtype=np.float32))[::-1].tolist()
+        k = top_k if top_k is not None else self.top_k
+        return order[:k] if k is not None else order
+
+    def rerank(self, query: str, passages: List[str], base_scores: Optional[np.ndarray] = None) -> List[str]:
+        """Text-only convenience wrapper (kept for backward compatibility)."""
+        order = self.rank(query, passages)
+        return passages if order is None else [passages[i] for i in order]
+    
+
+# ============================================================================
 # Two-Stage Retrieval
 # ============================================================================
 
@@ -158,15 +216,17 @@ class TwoStageRetriever:
         contriever,
         contriever_tokenizer,
         config: InceptionRAGConfig,
+        reranker: Optional[PassageReranker] = None,
     ):
         self.corpus_texts = corpus_texts
         self.corpus_embs = corpus_embs
         self.contriever = contriever
         self.contriever_tokenizer = contriever_tokenizer
         self.config = config
+        self.reranker = reranker
         self.device = next(contriever.parameters()).device
     
-    def _encode(self, text: str) -> np.ndarray:
+    def encode(self, text: str) -> np.ndarray:
         inputs = self.contriever_tokenizer(
             [text], padding=False, truncation=True, max_length=512, return_tensors="pt"
         )
@@ -182,24 +242,29 @@ class TwoStageRetriever:
         Stage 1: Retrieve first_k from corpus
         Stage 2: Merge with poisoned, re-rank, select top_k
         """
-        query_emb = self._encode(question)
+        query_emb = self.encode(question)
         
         # Stage 1
         corpus_scores = self.corpus_embs @ query_emb
         top_indices = np.argsort(corpus_scores)[::-1][:self.config.retrieval_first_k]
 
-        if self.config.chunking:
-            final_indices = top_indices[:self.config.retrieval_top_k]
-            return [self.corpus_texts[i] for i in final_indices], 0
-        
+        candidate_texts = [self.corpus_texts[i] for i in top_indices]
+        num_corpus = len(candidate_texts)
+        candidate_scores = corpus_scores[top_indices]
+
         # Stage 2
-        num_corpus = len(top_indices)
-        candidate_texts = [self.corpus_texts[i] for i in top_indices] + poisoned_texts
-        
-        candidate_embs = np.array([self._encode(t) for t in candidate_texts])
-        candidate_scores = candidate_embs @ query_emb
-        
-        final_indices = np.argsort(candidate_scores)[::-1][:self.config.retrieval_top_k]
+        if self.config.chunking and poisoned_texts:
+            poisoned_embs = np.array([self._encode(t) for t in poisoned_texts])
+            candidate_texts += list(poisoned_texts)
+            candidate_scores = np.concatenate([candidate_scores, poisoned_embs @ query_emb])
+
+        final_indices = None
+        if self.reranker is not None:
+            final_indices = self.reranker.rank(question, candidate_texts, top_k=self.config.reranker_top_k)
+
+        if final_indices is None:
+            final_indices = np.argsort(candidate_scores)[::-1][:self.config.retrieval_top_k]
+
         adv_count = sum(1 for idx in final_indices if idx >= num_corpus)
         
         torch.cuda.empty_cache()
@@ -366,6 +431,14 @@ class InceptionRAGAttacker:
         final_answer = text[matches[-1].end() :].strip() if matches else ""
         ans_lower = final_answer.lower()
         return any(c.lower() in ans_lower for c in candidates)
+
+    def _similarity(self, target_answer: str, llm_response: str) -> float:
+        target_emb = self.retriever.encode(target_answer)
+        response_emb = self.retriever.encode(llm_response)
+
+        similarity = float(np.dot(target_emb, response_emb))
+
+        return similarity
     
     def _apply_hodor(self, question: str, context: List[str]) -> str:
         """
@@ -566,6 +639,9 @@ class InceptionRAGAttacker:
                         target_answer=result.get("target", "")
                     )
                 except: pass
+
+            if self.config.measure_similarity:
+                result["embedding_similarity"] = self._similarity(result.get("target", ""), result.get("answer", ""))
             
             # Checkpoint
             if output_path:
@@ -724,231 +800,272 @@ class InceptionRAGAttacker:
 # ============================================================================
 
     
-def build_adv_corpus(
-        adv_texts: Sequence[dict], 
-        anchor_suffix: str, 
-        bridge_suffix: str, 
-        config: InceptionRAGConfig,
-        output_path: str
-    ) -> List[str]:
-    adv_corpus: List[str] = []
+class AdvCorpusPipeline:
+    """Builds, chunks, embeds, saves and loads a wiki + adversarial corpus."""
 
-    for item in adv_texts:
-        adv = item.get("ad_text") or {}
-        question = str(item.get("question") or item.get("text") or "").strip()
-        attribute_doc = str(adv.get("attribute_document") or adv.get("text1") or "").strip()
-        bridge_doc = str(adv.get("bridge_document") or adv.get("text2") or "").strip()
+    def __init__(
+        self,
+        config: "InceptionRAGConfig",
+        contriever,
+        contriever_tokenizer,
+        data_root: Path,
+        dataset: str,
+        embed_batch_size: int = 64,
+    ):
+        self.config = config
+        self.contriever = contriever
+        self.tokenizer = contriever_tokenizer
+        self.data_root = Path(data_root)
+        self.dataset = dataset
+        self.embed_batch_size = embed_batch_size
 
-        noisy_anchor = inject_polymorphic_noise(anchor_suffix, config.noise_injection)
-        noisy_bridge = inject_polymorphic_noise(bridge_suffix, config.noise_injection)
+        self._bert_tokenizer = None
+        self._bert_tokenizer_failed = False
 
-        attribute_doc = f"{attribute_doc} {noisy_anchor}" if attribute_doc else ""
-        bridge_doc = f"{bridge_doc} {noisy_bridge}" if bridge_doc else ""
+    # ------------------------------------------------------------------ paths
+    @property
+    def corpus_dir(self) -> Path:
+        return self.data_root / f"custom_corpus/{self.dataset}"
 
-        attribute_doc = inject_dual_ended(attribute_doc, question, config)
-        bridge_doc = inject_dual_ended(bridge_doc, question, config)
+    @property
+    def _stem(self) -> str:
+        c = self.config
+        return f"{self.dataset}-{c.chunking_strategy}-{c.chunk_size}-{c.chunk_overlap}"
 
-        adv_corpus.append(attribute_doc)
-        adv_corpus.append(bridge_doc)
+    @property
+    def default_chunk_paths(self) -> Tuple[Path, Path]:
+        return self.corpus_dir / f"{self._stem}.json", self.corpus_dir / f"{self._stem}.npy"
 
-    with open(output_path, "w", encoding="utf-8") as f:
-        for i, text in enumerate(adv_corpus):
-            text = text.strip()
-            if not text: continue
+    # ------------------------------------------------------- adversarial docs
+    def build_adv_corpus(
+        self,
+        adv_texts: Sequence[dict],
+        anchor_suffix: str,
+        bridge_suffix: str,
+        output_path: Path,
+    ) -> Path:
+        cfg = self.config
+        adv_corpus: List[str] = []
 
-            json.dump({
-                "id": f"adv-{i}",
-                "title": "",
-                "text": text,
-            }, f, ensure_ascii=False)
+        for item in adv_texts:
+            adv = item.get("ad_text") or {}
+            question = str(item.get("question") or item.get("text") or "").strip()
+            attribute_doc = str(adv.get("attribute_document") or adv.get("text1") or "").strip()
+            bridge_doc = str(adv.get("bridge_document") or adv.get("text2") or "").strip()
 
-            f.write("\n")
+            noisy_anchor = inject_polymorphic_noise(anchor_suffix, cfg.noise_injection)
+            noisy_bridge = inject_polymorphic_noise(bridge_suffix, cfg.noise_injection)
 
-def load_jsonl_corpus(corpus_file: Path) -> List[str]:
-    corpus = []
+            attribute_doc = f"{attribute_doc} {noisy_anchor}" if attribute_doc else ""
+            bridge_doc = f"{bridge_doc} {noisy_bridge}" if bridge_doc else ""
 
-    with open(corpus_file, "r", encoding="utf-8") as f:
+            adv_corpus.append(inject_dual_ended(attribute_doc, question, cfg))
+            adv_corpus.append(inject_dual_ended(bridge_doc, question, cfg))
 
-        for line in f:
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(output_path, "w", encoding="utf-8") as f:
+            for i, text in enumerate(adv_corpus):
+                text = text.strip()
+                if not text:
+                    continue
+                json.dump({"id": f"adv-{i}", "title": "", "text": text}, f, ensure_ascii=False)
+                f.write("\n")
 
-            line = line.strip()
+        return output_path
 
-            if not line:
-                continue
+    # ---------------------------------------------------------------- loading
+    @staticmethod
+    def load_jsonl_corpus(corpus_file: Path) -> List[str]:
+        corpus = []
+        with open(corpus_file, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                doc = json.loads(line)
+                title = (doc.get("title") or "").strip()
+                text = (doc.get("text") or "").strip()
+                if not text:
+                    continue
+                corpus.append(f"{title} {text}" if title else text)
+        return corpus
 
-            doc = json.loads(line)
+    def merge_wiki_adv(self, wiki_file: Path, adv_file: Path) -> List[str]:
+        return self.load_jsonl_corpus(wiki_file) + self.load_jsonl_corpus(adv_file)
 
-            title = doc.get("title", "").strip()
-            text = doc.get("text", "").strip()
+    # -------------------------------------------------------------- tokenizers
 
-            if not text:
-                continue
-
-            if title:
-                corpus.append(f"{title} {text}")
-            else:
-                corpus.append(text)
-
-    return corpus
-
-
-def merge_wiki_adv(wiki_file: Path, adv_file: Path) -> List[str]:
-    wiki_docs = load_jsonl_corpus(wiki_file)
-    adv_docs = load_jsonl_corpus(adv_file)
-
-
-    return wiki_docs + adv_docs
-
-def get_bert_tokenizer():
-    """Load the BERT tokenizer once (it used to be reloaded for every document)."""
-    global _BERT_TOKENIZER, _BERT_TOKENIZER_FAILED
-    if _BERT_TOKENIZER is None and not _BERT_TOKENIZER_FAILED:
+    @staticmethod
+    def word_tokenizer(text: str) -> List[str]:
         try:
-            from transformers import AutoTokenizer
- 
-            _BERT_TOKENIZER = AutoTokenizer.from_pretrained("bert-base-uncased")
+            from nltk.tokenize import word_tokenize
+            return word_tokenize(text)
         except Exception:
-            _BERT_TOKENIZER_FAILED = True
-    return _BERT_TOKENIZER
+            return re.findall(r"\b\w+\b|[^\w\s]", text)
 
+    @property
+    def _use_words(self) -> bool:
+        return "word" in self.config.chunking_strategy
 
-def word_tokenizer(text: str) -> List[str]:
-    try:
-        import nltk
-        from nltk.tokenize import word_tokenize
+    def _tokenize(self, text: str) -> list:
+        if self._use_words:
+            return self.word_tokenizer(text)
+        return self.tokenizer.encode(text, add_special_tokens=False)
 
-        return word_tokenize(text)
-    except Exception:
-        return re.findall(r"\b\w+\b|[^\w\s]", text)
+    def _join_tokens(self, tokens) -> str:
+        if self.config.chunking_strategy.startswith("word"):
+            return " ".join(tokens).strip()
+        return self.tokenizer.decode(
+            tokens, skip_special_tokens=True, clean_up_tokenization_spaces=True
+        ).strip()
 
+    # --------------------------------------------------------------- chunking
+    def chunk_texts(self, texts: List[str]) -> List[str]:
+        cfg = self.config
+        if cfg.chunk_size <= 0:
+            raise ValueError("chunk_size must be > 0")
+        if cfg.chunk_overlap < 0:
+            raise ValueError("chunk_overlap must be >= 0")
+        if cfg.chunk_overlap >= cfg.chunk_size:
+            cfg.chunk_overlap = max(0, cfg.chunk_size - 1)
 
+        step = max(1, cfg.chunk_size - cfg.chunk_overlap)
+        chunks = []
 
-def join_tokens(tokens, strategy, tokenizer):
-    if strategy.startswith("word"):
-        return " ".join(tokens).strip()
-
-    return tokenizer.decode(
-        tokens,
-        skip_special_tokens=True,
-        clean_up_tokenization_spaces=True,
-    ).strip()
-
-
-def chunk_texts(texts: List[str], contriever_tokenizer, max_length, config: InceptionRAGConfig):
-    if config.chunk_size <= 0:
-        raise ValueError("chunk_size must be > 0")
-    if config.chunk_overlap < 0:
-        raise ValueError("chunk_overlap must be >= 0")
-    if config.chunk_overlap >= config.chunk_size:
-        config.chunk_overlap = max(0, config.chunk_size - 1)
-
-    tokenizer = word_tokenizer if "word" in config.chunking_strategy else contriever_tokenizer
-    step = max(1, config.chunk_size - config.chunk_overlap)
-
-    chunks = []
-
-    for text in tqdm(texts, desc="Chunking Documents", unit="doc", dynamic_ncols=True):
-        cleaned = (text or "").strip()
-        if not cleaned:
-            continue
-
-        if "word" in config.chunking_strategy:
-            tokens = tokenizer(cleaned)
-        else:
-            tokens = contriever_tokenizer.encode(
-                cleaned,
-                add_special_tokens=False,
-            )
-            
-        if not tokens:
-            continue
-
-        for start in range(0, len(tokens), step):
-            end = min(len(tokens), start + config.chunk_size)
-            chunk_tokens = tokens[start:end]
-            if not chunk_tokens:
+        for text in tqdm(texts, desc="Chunking Documents", unit="doc", dynamic_ncols=True):
+            cleaned = (text or "").strip()
+            if not cleaned:
                 continue
-            chunk_text = join_tokens(chunk_tokens, config.chunking_strategy, contriever_tokenizer)
-            if chunk_text:
-                chunks.append(chunk_text)
-            if end >= len(tokens):
-                break
+            tokens = self._tokenize(cleaned)
+            if not tokens:
+                continue
 
-    return chunks
+            for start in range(0, len(tokens), step):
+                end = min(len(tokens), start + cfg.chunk_size)
+                chunk_text = self._join_tokens(tokens[start:end])
+                if chunk_text:
+                    chunks.append(chunk_text)
+                if end >= len(tokens):
+                    break
 
-def _mean_pool(last_hidden: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
-    """Mean over real tokens only (padding excluded)."""
-    mask = attention_mask.unsqueeze(-1).to(last_hidden.dtype)
-    return (last_hidden * mask).sum(dim=1) / mask.sum(dim=1).clamp(min=1e-9)
+        return chunks
 
+    # -------------------------------------------------------------- embedding
+    @staticmethod
+    def _mean_pool(last_hidden: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
+        mask = attention_mask.unsqueeze(-1).to(last_hidden.dtype)
+        return (last_hidden * mask).sum(dim=1) / mask.sum(dim=1).clamp(min=1e-9)
 
+    def embed_chunks(self, chunks: Sequence[str]) -> np.ndarray:
+        if not chunks:
+            return np.zeros((0, 1), dtype=np.float32)
 
-def embed_chunks(chunks: Sequence[str], contriever, contriever_tokenizer) -> np.ndarray:
-    if not chunks:
-        return np.zeros((0, 1), dtype=np.float32)
-
-    device = next(contriever.parameters()).device
-    batch_size = 64
-    max_length = min(
-        contriever_tokenizer.model_max_length,
-        contriever.config.max_position_embeddings,
-    )
-    chunks = [(c or "").strip() for c in chunks]
-
-    # Sort by length so batches have minimal padding, then restore original order.
-    order = np.argsort([len(c) for c in chunks])
-    all_embs = [None] * len(chunks)
-
-    for start in tqdm(
-        range(0, len(chunks), batch_size),
-        desc="Encoding chunks",
-        unit="batch",
-        dynamic_ncols=True,
-    ):
-        idx = order[start:start + batch_size]
-        batch_texts = [chunks[i] for i in idx]
-
-        inputs = contriever_tokenizer(
-            batch_texts,
-            padding=True,          # safe: padding is masked out in pooling
-            truncation=True,
-            max_length=max_length,
-            return_tensors="pt",
+        device = next(self.contriever.parameters()).device
+        max_length = min(
+            self.tokenizer.model_max_length,
+            self.contriever.config.max_position_embeddings,
         )
-        inputs = {k: v.to(device) for k, v in inputs.items()}
+        chunks = [(c or "").strip() for c in chunks]
 
-        with torch.no_grad():
-            outputs = contriever(**inputs)
-            embs = _mean_pool(outputs.last_hidden_state, inputs["attention_mask"])
+        order = np.argsort([len(c) for c in chunks])  # minimise padding
+        all_embs = [None] * len(chunks)
 
-        embs = embs.cpu().numpy()
-        for j, i in enumerate(idx):
-            all_embs[i] = embs[j]
+        for start in tqdm(
+            range(0, len(chunks), self.embed_batch_size),
+            desc="Encoding chunks", unit="batch", dynamic_ncols=True,
+        ):
+            idx = order[start:start + self.embed_batch_size]
+            inputs = self.tokenizer(
+                [chunks[i] for i in idx],
+                padding=True, truncation=True,
+                max_length=max_length, return_tensors="pt",
+            )
+            inputs = {k: v.to(device) for k, v in inputs.items()}
 
-    embs = np.vstack(all_embs)
-    embs = embs / (np.linalg.norm(embs, axis=1, keepdims=True) + 1e-8)
-    return embs.astype(np.float32)
+            with torch.no_grad():
+                out = self.contriever(**inputs)
+                embs = self._mean_pool(out.last_hidden_state, inputs["attention_mask"])
+
+            embs = embs.cpu().numpy()
+            for j, i in enumerate(idx):
+                all_embs[i] = embs[j]
+
+        embs = np.vstack(all_embs)
+        embs = embs / (np.linalg.norm(embs, axis=1, keepdims=True) + 1e-8)
+        return embs.astype(np.float32)
+
+    # ----------------------------------------------------------------- saving
+    def save_chunk_embeds(self, chunks: Sequence[str], embeddings: np.ndarray) -> Tuple[Path, Path]:
+        self.corpus_dir.mkdir(parents=True, exist_ok=True)
+        json_path, npy_path = self.default_chunk_paths
+
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(list(chunks), f, ensure_ascii=False, indent=2)
+        np.save(npy_path, embeddings)
+
+        return json_path, npy_path
+
+    def get_adv_file(
+        self,
+        adv_docs_arg: Optional[str],
+        all_data,
+        anchor_suffix: str,
+        bridge_suffix: str,
+    ) -> Optional[Path]:
+        """anchor/bridge suffixes are only used if the file must be generated."""
+        print("Loading adversarial documents...")
+        if adv_docs_arg:
+            file = Path(adv_docs_arg)
+            if not file.exists():
+                print(f"Adversarial Documents were not found at {file}")
+                return None
+            return file
+
+        file = self.corpus_dir / "adv_docs.json"
+        if file.exists():
+            return file
+
+        self.build_adv_corpus(all_data, anchor_suffix, bridge_suffix, file)
+        print(f"Saved adversarial documents to {file}")
+        return file
+
+    def get_wiki_file(self, wiki_arg: Optional[str]) -> Optional[Path]:
+        print("Loading wiki corpus...")
+        file = Path(wiki_arg) if wiki_arg else self.corpus_dir / "wiki_corpus.jsonl"
+        if file.exists():
+            return file
+        print(f"Wiki Corpus not found at {file}")
+        if not wiki_arg:
+            print("Please run 'data/download_wiki_corpus.py' first")
+        return None
+
+    def prepare_corpus(
+        self,
+        wiki_file: Path,
+        adv_file: Path,
+        custom_texts: Optional[Path] = None,
+        custom_embs: Optional[Path] = None,
+    ) -> Tuple[Path, Path]:
+        """Return (texts_path, embs_path), building them only if they don't exist."""
+        if custom_texts and custom_embs:
+            return Path(custom_texts), Path(custom_embs)
+
+        text_file, embs_file = self.default_chunk_paths
+        if text_file.exists() and embs_file.exists():
+            return text_file, embs_file
+
+        print("Creating poisoned Corpus...")
+        merged = self.merge_wiki_adv(wiki_file, adv_file)
+        chunks = self.chunk_texts(merged)
+        print("Embedding chunks...")
+        embeddings = self.embed_chunks(chunks)
+        paths = self.save_chunk_embeds(chunks, embeddings)
+        print(f"Save custom corpus to {paths[0]} and {paths[1]}")
+        return paths
 
 
-def save_chunk_embeds(
-        output_dir: Path, 
-        dataset:str, 
-        chunks: Sequence[str], 
-        embeddings:np.ndarray, 
-        config: InceptionRAGConfig,
-    ):
-    output_dir.mkdir(parents=True, exist_ok=True)
-    stem = f"{dataset}-{config.chunking_strategy}-{config.chunk_size}-{config.chunk_overlap}"
-    json_path = output_dir / f"{stem}.json"
-    npy_path = output_dir / f"{stem}.npy"
 
-    with open(json_path, "w", encoding="utf-8") as f:
-        json.dump(list(chunks), f, ensure_ascii=False, indent=2)
-
-    np.save(npy_path, embeddings)
-
-    return json_path, npy_path
-    
 
 # ============================================================================
 # CLI Entry Point
@@ -1006,6 +1123,7 @@ def main():
 
     parser.add_argument("--add-gt", action="store_true", help="add ground truth information to ourput JSON file")
     parser.add_argument("--llm-judge", action="store_true", help="Use an llm as judge to get more accurate ASR")
+    parser.add_argument("--similarity", action="store_true", help="Measure the similarity between the target answer and the llm response")
 
     parser.add_argument("--chunk", action="store_true", help="Use chunking")
     parser.add_argument("--adv-docs", type=str, default=None, help="path to adversarial passages")
@@ -1015,6 +1133,10 @@ def main():
     parser.add_argument("--chunk-overlap", type=int, default=12, help="overlap between adjacent chunks")
     parser.add_argument("--custom-corpus_texts", type=str, default=None, help="chunked corpus texts JSON")
     parser.add_argument("--custom-corpus_embs", type=str, default=None, help="chunked corpus embeddings NPY")
+
+    parser.add_argument("--use_reranker", action="store_true", help="use a reranker")
+    parser.add_argument("--reranker-model", type=str, default="cross-encoder/ms-marco-MiniLM-L-6-v2", help="HuggingFace Reranker model")
+    parser.add_argument("--reranker-top-k", type=int, default=5, help="number of docs to send to llm")
     
     args = parser.parse_args()
     
@@ -1039,11 +1161,10 @@ def main():
         chunking_strategy = attack_changes_cfg.get("chunking_strategy", "word-based")
         chunk_size = attack_changes_cfg.get("chunk_size", 256)
         chunk_overlap = attack_changes_cfg.get("chunk_overlap", 12)
+        use_reranker = attack_changes_cfg.get("reranker", False)
+        reranker_model = attack_changes_cfg.get("reranker_model", "cross-encoder/ms-marco-MiniLM-L-6-v2")
+        reranker_top_k = attack_changes_cfg.get("reranker_top_k", 5)
 
-        print("chunking:", chunk)
-        print("strategy:", chunking_strategy)
-        print("size:", chunk_size)
-        print("overlap:", chunk_overlap)
 
         # Full config
         config = InceptionRAGConfig(
@@ -1056,10 +1177,14 @@ def main():
             use_hodor=args.hodor,
             hodor_model=args.hodor_model,
             llm_judge=args.llm_judge,
+            measure_similarity=args.similarity,
             chunking=chunk,
             chunking_strategy=chunking_strategy,
             chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap
+            chunk_overlap=chunk_overlap,
+            reranker=use_reranker,
+            reranker_model=reranker_model,
+            reranker_top_k=reranker_top_k
         )
     else:
         # Build from CLI args
@@ -1089,10 +1214,14 @@ def main():
             use_hodor=args.hodor,
             hodor_model=args.hodor_model,
             llm_judge=args.llm_judge,
+            measure_similarity=args.similarity,
             chunking=args.chunk,
             chunking_strategy=args.chunking_strategy,
             chunk_size=args.chunk_size,
-            chunk_overlap=args.chunk_overlap
+            chunk_overlap=args.chunk_overlap,
+            reranker=args.use_reranker,
+            reranker_model=args.reranker_model,
+            reranker_top_k=args.reranker_top_k
         )
     
     print("=" * 60)
@@ -1373,64 +1502,26 @@ def main():
     
     # ========== CHUNKING ==========
     if config.chunking:
-        print(f"\n[3.5/5] Chunking corpus...")
-        print("Loadinng adversarial documents...")
-        if args.adv_docs:
-            file = Path(args.adv_docs)
-            if file.exists():
-                adv_file = file
-            else:
-                print(f"Adversarial Documents were not found at {file}")
-                return
-        else:
-            file = DATA_ROOT / f"custom_corpus/{ds}/adv_docs.json"
-            if file.exists():
-                adv_file = file
-            else:
-                anchor_suffix = suffix_pool.anchors[optimal_anchor_idx]
-                bridge_suffix = suffix_pool.bridges[optimal_bridge_idx]
-                adv_file = DATA_ROOT / f"custom_corpus/{ds}/adv_docs.json"
-                build_adv_corpus(all_data, anchor_suffix, bridge_suffix, config, adv_file)
-                print(f"Saved adversarial documents to {adv_file}")
+        print("\n[3.5/5] Chunking corpus...")
 
-        print("Loading wiki corpus...")
-        if args.wiki_corpus:
-            file = Path(args.wiki_corpus)
-            if file.exists():
-                wiki_file = file
-            else:
-                print(f"Wiki Corpus not found at {file}")
-                return
+        pipeline = AdvCorpusPipeline(config, contriever, contriever_tokenizer, DATA_ROOT, ds)
 
-        else:
-            file = DATA_ROOT / f"custom_corpus/{ds}/wiki_corpus.jsonl"
-            if file.exists():
-                wiki_file = file
-            else:
-                print(f"Wiki Corpus not found at {file}")
-                print("Please run \'data/download_wiki_corpus.py\' first")
-                return
+        # suffixes are only needed if adv_docs.json has to be generated
+        adv_file = pipeline.resolve_adv_file(
+            args.adv_docs, all_data,
+            suffix_pool.anchors[optimal_anchor_idx],
+            suffix_pool.bridges[optimal_bridge_idx],
+        )
+        if adv_file is None:
+            return
 
-        if not args.custom_corpus_texts or not args.custom_corpus_embs:
-            text_file = DATA_ROOT / f"custom_corpus/{ds}/{ds}-{config.chunking_strategy}-{config.chunk_size}-{config.chunk_overlap}.json"
-            embs_file = DATA_ROOT / f"custom_corpus/{ds}/{ds}-{config.chunking_strategy}-{config.chunk_size}-{config.chunk_overlap}.npy"
-            if text_file.exists() and embs_file.exists():
-                args.corpus_texts = text_file
-                args.corpus_embs = embs_file
-            else:
-                print("Creating poisoned Corpus...")
-                merged_docs = merge_wiki_adv(wiki_file, adv_file)
+        wiki_file = pipeline.resolve_wiki_file(args.wiki_corpus)
+        if wiki_file is None:
+            return
 
-                max_length = contriever.config.max_position_embeddings
-                chunks = chunk_texts(merged_docs, contriever_tokenizer, max_length, config)
-                print("Embedding chunks...")
-                embeddings = embed_chunks(chunks, contriever, contriever_tokenizer)
-                custom_corpus_path = DATA_ROOT / f"custom_corpus/{ds}"
-                args.corpus_texts, args.corpus_embs = save_chunk_embeds(custom_corpus_path, ds, chunks, embeddings, config)
-                print(f"Save custom corpus to {args.corpus_texts} and {args.corpus_embs}")
-        else:
-            args.corpus_texts = args.custom_corpus_texts
-            args.corpus_embs = args.custom_corpus_embs
+        args.corpus_texts, args.corpus_embs = pipeline.prepare_corpus(
+            wiki_file, adv_file, args.custom_corpus_texts, args.custom_corpus_embs
+        )
 
     print("\n[4/5] Loading corpus...")
     corpus_embs = np.load(args.corpus_embs)
@@ -1448,7 +1539,9 @@ def main():
     
     # Initialize
     print("\n[5/5] Initializing attacker...")
-    retriever = TwoStageRetriever(corpus_texts, corpus_embs, contriever, contriever_tokenizer, config)
+
+    reranker = PassageReranker(config.reranker_model, config.reranker_top_k) if config.reranker else None
+    retriever = TwoStageRetriever(corpus_texts, corpus_embs, contriever, contriever_tokenizer, config, reranker)
     attacker = InceptionRAGAttacker(config, suffix_pool, retriever, optimal_anchor_idx, optimal_bridge_idx)
     
     # Attack

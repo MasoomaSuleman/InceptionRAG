@@ -14,15 +14,18 @@ llm:
   model: "Qwen/Qwen2.5-3B-Instruct" #"zai-org/GLM-5.3"
 
 attack: 
-  retrieval_top_k: 10
-  retrieval_first_k: 20
+  retrieval_top_k: 50
+  retrieval_first_k: 50
   cttft_neighbor_k: 10
   noise_injection: true
   dual_injection: true
   
 attack_changes:
-  chunk: true
+  chunk: false
   chunking_strategy: "word-based"
   chunk_size: 100
   chunk_overlap: 12
+  reranker: true
+  reranker_model: "cross-encoder/ms-marco-MiniLM-L-6-v2"
+  reranker_top_k: 5
   

@@ -1,24 +1,50 @@
-#attack-20-20
-attack:	
+##attack-20-20
+attack: 
   retrieval_top_k: 20
   retrieval_first_k: 20
   cttft_neighbor_k: 10
   noise_injection: true
   dual_injection: true
   
-#attack-50-20
-attack:	
+attack_changes:
+  chunk: false
+  chunking_strategy: "word-based"
+  chunk_size: 100
+  chunk_overlap: 12
+  reranker: false
+  reranker_model: "cross-encoder/ms-marco-MiniLM-L-6-v2"
+  reranker_top_k: 5
+
+##attack-50-20
+attack: 
   retrieval_top_k: 20
   retrieval_first_k: 50
   cttft_neighbor_k: 10
   noise_injection: true
   dual_injection: true
   
-#attack-20-10
-attack:	
+attack_changes:
+  chunk: false
+  chunking_strategy: "word-based"
+  chunk_size: 100
+  chunk_overlap: 12
+  reranker: false
+  reranker_model: "cross-encoder/ms-marco-MiniLM-L-6-v2"
+  reranker_top_k: 5
+
+##attack-20-10
+attack: 
   retrieval_top_k: 10
   retrieval_first_k: 20
   cttft_neighbor_k: 10
   noise_injection: true
   dual_injection: true
-
+  
+attack_changes:
+  chunk: false
+  chunking_strategy: "word-based"
+  chunk_size: 100
+  chunk_overlap: 12
+  reranker: false
+  reranker_model: "cross-encoder/ms-marco-MiniLM-L-6-v2"
+  reranker_top_k: 5
