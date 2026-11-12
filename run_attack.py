@@ -406,13 +406,20 @@ class InceptionRAGAttacker:
         question: str
     ) -> Tuple[bool, str, List[str]]:
         """Single attack attempt"""
-        poisoned = self._build_poisoned_texts(item, anchor, bridge, question)
         
-        # Skip retrieval: use poisoned docs directly (higher ASR)
-        if self.config.skip_retrieval:
-            context = poisoned
+
+        if not self.config.chunking:
+            poisoned = self._build_poisoned_texts(item, anchor, bridge, question)
+        
+            # Skip retrieval: use poisoned docs directly (higher ASR)
+            if self.config.skip_retrieval:
+                context = poisoned
+            else:
+                context, adv_count = self.retriever.retrieve(question, poisoned)
+
         else:
-            context, adv_count = self.retriever.retrieve(question, poisoned)
+            context, _ = self.retriever.retrieve(question)
+
         
         random.shuffle(context)
         
@@ -790,7 +797,7 @@ def merge_wiki_adv(wiki_file: Path, adv_file: Path) -> List[str]:
     adv_docs = load_jsonl_corpus(adv_file)
 
 
-    return wiki_docs[:len(adv_docs)] + adv_docs
+    return wiki_docs + adv_docs
 
 def get_bert_tokenizer():
     """Load the BERT tokenizer once (it used to be reloaded for every document)."""
@@ -814,27 +821,20 @@ def word_tokenizer(text: str) -> List[str]:
     except Exception:
         return re.findall(r"\b\w+\b|[^\w\s]", text)
 
-def token_tokenizer(text: str) -> List[str]:
-    tokenizer = get_bert_tokenizer()
-    if tokenizer is not None:
-        return tokenizer.tokenize(text)
-    
-    # Reasonable fallback when a tokenizer model is unavailable locally.
-    return re.findall(r"\w+|[\.,!?;:()\[\]{}\"'/-]", text)
 
 
-def join_tokens(tokens, strategy):
+def join_tokens(tokens, strategy, tokenizer):
     if strategy.startswith("word"):
         return " ".join(tokens).strip()
- 
-    tokenizer = get_bert_tokenizer()
-    if tokenizer is not None:
-        # Correctly merges WordPiece pieces ("##ing") back into words
-        return tokenizer.convert_tokens_to_string(list(tokens)).strip()
-    return " ".join(tokens).strip()
+
+    return tokenizer.decode(
+        tokens,
+        skip_special_tokens=True,
+        clean_up_tokenization_spaces=True,
+    ).strip()
 
 
-def chunk_texts(texts: List[str], config: InceptionRAGConfig):
+def chunk_texts(texts: List[str], contriever_tokenizer, max_length, config: InceptionRAGConfig):
     if config.chunk_size <= 0:
         raise ValueError("chunk_size must be > 0")
     if config.chunk_overlap < 0:
@@ -842,7 +842,7 @@ def chunk_texts(texts: List[str], config: InceptionRAGConfig):
     if config.chunk_overlap >= config.chunk_size:
         config.chunk_overlap = max(0, config.chunk_size - 1)
 
-    tokenizer = word_tokenizer if "word" in config.chunking_strategy else token_tokenizer
+    tokenizer = word_tokenizer if "word" in config.chunking_strategy else contriever_tokenizer
     step = max(1, config.chunk_size - config.chunk_overlap)
 
     chunks = []
@@ -851,7 +851,15 @@ def chunk_texts(texts: List[str], config: InceptionRAGConfig):
         cleaned = (text or "").strip()
         if not cleaned:
             continue
-        tokens = tokenizer(cleaned)
+
+        if "word" in config.chunking_strategy:
+            tokens = tokenizer(cleaned)
+        else:
+            tokens = contriever_tokenizer.encode(
+                cleaned,
+                add_special_tokens=False,
+            )
+            
         if not tokens:
             continue
 
@@ -860,7 +868,7 @@ def chunk_texts(texts: List[str], config: InceptionRAGConfig):
             chunk_tokens = tokens[start:end]
             if not chunk_tokens:
                 continue
-            chunk_text = join_tokens(chunk_tokens, config.chunking_strategy)
+            chunk_text = join_tokens(chunk_tokens, config.chunking_strategy, contriever_tokenizer)
             if chunk_text:
                 chunks.append(chunk_text)
             if end >= len(tokens):
@@ -868,20 +876,59 @@ def chunk_texts(texts: List[str], config: InceptionRAGConfig):
 
     return chunks
 
+def _mean_pool(last_hidden: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
+    """Mean over real tokens only (padding excluded)."""
+    mask = attention_mask.unsqueeze(-1).to(last_hidden.dtype)
+    return (last_hidden * mask).sum(dim=1) / mask.sum(dim=1).clamp(min=1e-9)
 
-def embed_chunks(chunks: Sequence[str]) -> np.ndarray:
+
+
+def embed_chunks(chunks: Sequence[str], contriever, contriever_tokenizer) -> np.ndarray:
     if not chunks:
         return np.zeros((0, 1), dtype=np.float32)
 
-    try:
-        from sentence_transformers import SentenceTransformer
+    device = next(contriever.parameters()).device
+    batch_size = 64
+    max_length = min(
+        contriever_tokenizer.model_max_length,
+        contriever.config.max_position_embeddings,
+    )
+    chunks = [(c or "").strip() for c in chunks]
 
-        model = SentenceTransformer("all-mpnet-base-v2")
-        embs = model.encode(list(chunks), convert_to_numpy=True, show_progress_bar=True)
-        return np.asarray(embs, dtype=np.float32)
-    except Exception:
-        rng = np.random.default_rng(0)
-        return np.asarray([rng.normal(0, 1, 768).astype(np.float32) for _ in chunks], dtype=np.float32)
+    # Sort by length so batches have minimal padding, then restore original order.
+    order = np.argsort([len(c) for c in chunks])
+    all_embs = [None] * len(chunks)
+
+    for start in tqdm(
+        range(0, len(chunks), batch_size),
+        desc="Encoding chunks",
+        unit="batch",
+        dynamic_ncols=True,
+    ):
+        idx = order[start:start + batch_size]
+        batch_texts = [chunks[i] for i in idx]
+
+        inputs = contriever_tokenizer(
+            batch_texts,
+            padding=True,          # safe: padding is masked out in pooling
+            truncation=True,
+            max_length=max_length,
+            return_tensors="pt",
+        )
+        inputs = {k: v.to(device) for k, v in inputs.items()}
+
+        with torch.no_grad():
+            outputs = contriever(**inputs)
+            embs = _mean_pool(outputs.last_hidden_state, inputs["attention_mask"])
+
+        embs = embs.cpu().numpy()
+        for j, i in enumerate(idx):
+            all_embs[i] = embs[j]
+
+    embs = np.vstack(all_embs)
+    embs = embs / (np.linalg.norm(embs, axis=1, keepdims=True) + 1e-8)
+    return embs.astype(np.float32)
+
 
 def save_chunk_embeds(
         output_dir: Path, 
@@ -1373,9 +1420,11 @@ def main():
             else:
                 print("Creating poisoned Corpus...")
                 merged_docs = merge_wiki_adv(wiki_file, adv_file)
-                chunks = chunk_texts(merged_docs, config)
+
+                max_length = contriever.config.max_position_embeddings
+                chunks = chunk_texts(merged_docs, contriever_tokenizer, max_length, config)
                 print("Embedding chunks...")
-                embeddings = embed_chunks(chunks)
+                embeddings = embed_chunks(chunks, contriever, contriever_tokenizer)
                 custom_corpus_path = DATA_ROOT / f"custom_corpus/{ds}"
                 args.corpus_texts, args.corpus_embs = save_chunk_embeds(custom_corpus_path, ds, chunks, embeddings, config)
                 print(f"Save custom corpus to {args.corpus_texts} and {args.corpus_embs}")
@@ -1407,8 +1456,6 @@ def main():
     print("Stage 3: Attack with CTTFT")
     print("=" * 60)
 
-    print(config.retrieval_first_k)
-    print(config.retrieval_top_k)
     
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)

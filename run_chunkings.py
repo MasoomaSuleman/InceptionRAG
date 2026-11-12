@@ -96,7 +96,7 @@ first = True
 
 for block in blocks:
 
-    output_name = block[0].strip()
+    output_name = block[0].strip()[1:]
     attack_yaml = "\n".join(block[1:]).expandtabs(2)
 
     with open(CONFIG_FILE, "w") as f:

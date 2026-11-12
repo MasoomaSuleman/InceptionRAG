@@ -167,6 +167,24 @@ def get_doc_ids(annotated_queries):
 
     return ids
 
+import html
+import re
+import mwparserfromhell
+
+def wikitext_to_text(wikitext: str) -> str:
+    code = mwparserfromhell.parse(wikitext)
+
+    text = code.strip_code(
+        normalize=True,
+        collapse=True,
+        keep_template_params=False,
+    )
+
+    text = html.unescape(text)
+    text = re.sub(r"\n\s*\n+", "\n\n", text)
+    return text.strip()
+
+
 def download_msmarco(root):
     url = "https://msmarco.z22.web.core.windows.net/msmarcoranking/msmarco-docs.tsv.gz"
     docs_path = root / "custom_corpus" / "msmarco" / "msmarco-docs.tsv.gz"
@@ -238,10 +256,15 @@ def download_hotpotqa(root):
                 page = json.loads(line)
 
                 title = page["title"]
+                text = wikitext_to_text(page["text"])
 
                 if title in titles:
 
-                    out.write(json.dumps(page, ensure_ascii=False))
+                    wiki_page = {
+                        "title": title,
+                        "text": wikitext_to_text(text),
+                    }
+                    out.write(json.dumps(wiki_page, ensure_ascii=False))
                     out.write("\n")
                     # page = {
                     #     "title": title,
@@ -266,7 +289,6 @@ def download_hotpotqa(root):
     
 
 def download_nq(root):
-    print("here")
     url = "https://dumps.wikimedia.org/enwiki/latest/enwiki-latest-pages-articles-multistream.xml.bz2"
     wiki_dump_path = root / "custom_corpus" / "nq" / "enwiki-latest-pages-articles-multistream.xml.bz2s"
     download(url, wiki_dump_path)
@@ -320,7 +342,7 @@ def download_nq(root):
 
             page = {
                 "title": title,
-                "text": text,
+                "text": wikitext_to_text(text),
             }
 
             out.write(json.dumps(page, ensure_ascii=False))
