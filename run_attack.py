@@ -1583,7 +1583,7 @@ def main():
 
     reranker = PassageReranker(config.reranker_model, config.reranker_top_k) if config.reranker else None
     retriever = TwoStageRetriever(corpus_texts, corpus_embs, contriever, contriever_tokenizer, config, reranker)
-    attacker = InceptionRAGAttacker(config, suffix_pool, retriever, optimal_anchor_idx, optimal_bridge_idx)
+    attacker = InceptionRAGAttacker(config, suffix_pool, retriever, optimal_anchor_idx, optimal_bridge_idx, args.config)
     
     # Attack
     print("\n" + "=" * 60)
