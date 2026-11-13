@@ -1507,7 +1507,7 @@ def main():
         pipeline = AdvCorpusPipeline(config, contriever, contriever_tokenizer, DATA_ROOT, ds)
 
         # suffixes are only needed if adv_docs.json has to be generated
-        adv_file = pipeline.resolve_adv_file(
+        adv_file = pipeline.get_adv_file(
             args.adv_docs, all_data,
             suffix_pool.anchors[optimal_anchor_idx],
             suffix_pool.bridges[optimal_bridge_idx],
@@ -1515,7 +1515,7 @@ def main():
         if adv_file is None:
             return
 
-        wiki_file = pipeline.resolve_wiki_file(args.wiki_corpus)
+        wiki_file = pipeline.get_wiki_file(args.wiki_corpus)
         if wiki_file is None:
             return
 

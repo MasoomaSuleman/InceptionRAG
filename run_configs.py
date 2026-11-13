@@ -9,7 +9,7 @@ import subprocess
 from pathlib import Path
 import os
 
-CONFIG_FILE = Path("configs/config_modified.yaml")
+CONFIG_FILE = Path("configs/config.yaml")
 
 parser = argparse.ArgumentParser(
     description="Run all baseline attack configurations."
