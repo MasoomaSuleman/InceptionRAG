@@ -3,7 +3,7 @@ import random
 import os
 import re
 import sys
-import time
+import copy
 import yaml
 import numpy as np
 import torch
@@ -59,6 +59,7 @@ class InceptionRAGConfig:
     hodor_model: str = "gemini-2.0-flash"  # Model for HODOR voting
 
     llm_judge: bool = False
+    llm_juddge_config: LLMConfig = field(default_factory=LLMConfig)
     measure_similarity: bool = False
 
     chunking: bool = False
@@ -211,7 +212,7 @@ class TwoStageRetriever:
     
     def __init__(
         self,
-        corpus_texts: List[str],
+        corpus_texts,
         corpus_embs: np.ndarray,
         contriever,
         contriever_tokenizer,
@@ -236,7 +237,7 @@ class TwoStageRetriever:
             emb = self.contriever(**inputs).last_hidden_state.mean(dim=1).cpu().numpy()[0]
         return emb / (np.linalg.norm(emb) + 1e-8)
     
-    def retrieve(self, question: str, poisoned_texts: List[str] = None) -> Tuple[List[str], int]:
+    def retrieve(self, question: str, poisoned_texts: List[str] = None) -> Tuple[List[str], int, List[dict], List[dict]]:
         """
         Two-stage retrieval:
         Stage 1: Retrieve first_k from corpus
@@ -248,13 +249,16 @@ class TwoStageRetriever:
         corpus_scores = self.corpus_embs @ query_emb
         top_indices = np.argsort(corpus_scores)[::-1][:self.config.retrieval_first_k]
 
-        candidate_texts = [self.corpus_texts[i] for i in top_indices]
+        if isinstance(self.corpus_texts[0], dict):
+            candidate_texts = [self.corpus_texts[i].get("text", "") for i in top_indices]
+        else:
+            candidate_texts = [self.corpus_texts[i] for i in top_indices]
         num_corpus = len(candidate_texts)
         candidate_scores = corpus_scores[top_indices]
 
         # Stage 2
-        if self.config.chunking and poisoned_texts:
-            poisoned_embs = np.array([self._encode(t) for t in poisoned_texts])
+        if not self.config.chunking and poisoned_texts:
+            poisoned_embs = np.array([self.encode(t) for t in poisoned_texts])
             candidate_texts += list(poisoned_texts)
             candidate_scores = np.concatenate([candidate_scores, poisoned_embs @ query_emb])
 
@@ -268,7 +272,11 @@ class TwoStageRetriever:
         adv_count = sum(1 for idx in final_indices if idx >= num_corpus)
         
         torch.cuda.empty_cache()
-        return [candidate_texts[i] for i in final_indices], adv_count
+        if isinstance(self.corpus_texts[0], dict):
+            context = [self.corpus_texts[i].get("text", "") for i in top_indices]
+        else:
+            context = [self.corpus_texts[i] for i in top_indices]
+        return context, adv_count, [self.corpus_texts[i] for i in top_indices], [self.corpus_texts[i] for i in final_indices]
 
 # ============================================================================
 # Suffix Pool
@@ -329,10 +337,10 @@ class InceptionRAGAttacker:
         retriever: TwoStageRetriever,
         optimal_anchor_idx: int = 0,
         optimal_bridge_idx: int = 0,
-        config_yaml_text: Optional[str] = None,
+        config_yaml: Optional[str] = None,
     ):
         self.config = config
-        self.config_yaml_text = config_yaml_text
+        self.config_yaml = config_yaml
         self.pool = suffix_pool
         self.retriever = retriever
         
@@ -352,7 +360,7 @@ class InceptionRAGAttacker:
         
         # LLM client (supports OpenAI / Azure / Custom API)
         self.llm = create_llm_client(config.llm_config)
-        self.llm_judge = create_llm_client(config.llm_config) if config.llm_judge else None
+        self.llm_judge = create_llm_client(config.llm_juddge_config) if config.llm_judge else None
         
         # Stats
         self.stats = {
@@ -477,7 +485,7 @@ class InceptionRAGAttacker:
         anchor: str, 
         bridge: str, 
         question: str
-    ) -> Tuple[bool, str, List[str]]:
+    ) -> Tuple[bool, str, List[str], List[dict], List[dict]]:
         """Single attack attempt"""
         
 
@@ -488,10 +496,10 @@ class InceptionRAGAttacker:
             if self.config.skip_retrieval:
                 context = poisoned
             else:
-                context, adv_count = self.retriever.retrieve(question, poisoned)
+                context, adv_count, retrival_first_k_context, final_context = self.retriever.retrieve(question, poisoned)
 
         else:
-            context, _ = self.retriever.retrieve(question)
+            context, _, retrival_first_k_context, final_context = self.retriever.retrieve(question)
 
         
         random.shuffle(context)
@@ -503,9 +511,9 @@ class InceptionRAGAttacker:
             else:
                 answer = self._call_llm(question, context)
             success = self._check_success(answer, item)
-            return success, answer, context
+            return success, answer, context, retrival_first_k_context, final_context
         except Exception as e:
-            return False, str(e), context
+            return False, str(e), context, retrival_first_k_context, final_context
     
     def attack_single(self, item: dict) -> Dict:
         """
@@ -533,9 +541,14 @@ class InceptionRAGAttacker:
         
         # ========== L1: Global Probe ==========
         print(f"    [L1] Global...", end=" ", flush=True)
-        success, answer, context = self._try_attack(item, self.global_anchor, self.global_bridge, question)
+        success, answer, context, retrieval_first_k_context, final_context = self._try_attack(item, self.global_anchor, self.global_bridge, question)
         result["queries"] += 1
         result["context"] = context
+        result["retrival_first_k_context"] = retrieval_first_k_context
+        if self.config.reranker:
+            result["reranker_top_k_context"] = final_context
+        else:
+            result["retrieval_top_k_context"] = final_context
         
         if success:
             print(f"✓")
@@ -554,9 +567,14 @@ class InceptionRAGAttacker:
             
             for i, a_idx in enumerate(self.anchor_neighbors):
                 test_anchor = self.pool.anchors[a_idx]
-                success, answer, context = self._try_attack(item, test_anchor, self.global_bridge, question)
+                success, answer, context, retrieval_first_k_context, final_context = self._try_attack(item, test_anchor, self.global_bridge, question)
                 result["queries"] += 1
                 result["context"] = context
+                result["retrival_first_k_context"] = retrieval_first_k_context
+                if self.config.reranker:
+                    result["reranker_top_k_context"] = final_context
+                else:
+                    result["retrieval_top_k_context"] = final_context
                 
                 if success:
                     print(f"✓ [{i+1}]")
@@ -574,9 +592,14 @@ class InceptionRAGAttacker:
             
             for i, b_idx in enumerate(self.bridge_neighbors):
                 test_bridge = self.pool.bridges[b_idx]
-                success, answer, context = self._try_attack(item, best_anchor, test_bridge, question)
+                success, answer, context, retrieval_first_k_context, final_context = self._try_attack(item, best_anchor, test_bridge, question)
                 result["queries"] += 1
                 result["context"] = context
+                result["retrival_first_k_context"] = retrieval_first_k_context
+                if self.config.reranker:
+                    result["reranker_top_k_context"] = final_context
+                else:
+                    result["retrieval_top_k_context"] = final_context
                 
                 if success:
                     print(f"✓ [{i+1}]")
@@ -657,13 +680,15 @@ class InceptionRAGAttacker:
     def _save_results(self, results: List[Dict], output_path: Path):
         """Save results with stats"""
         total = self.stats["total"]
+        with open(self.config_yaml, "r") as f:
+            yaml_config = yaml.safe_load(f)
         output = {
             "config": {
                 "model": self.config.llm_config.model,
                 "retrieval_top_k": self.config.retrieval_top_k,
                 "cttft_neighbor_k": self.config.cttft_neighbor_k,
             },
-            "config_yaml": self.config_yaml_text,
+            "config_yaml": yaml_config,
 
             "stats": {
                 "total": total,
@@ -869,14 +894,14 @@ class AdvCorpusPipeline:
                 text = text.strip()
                 if not text:
                     continue
-                json.dump({"id": f"adv-{i}", "title": "", "text": text}, f, ensure_ascii=False)
+                json.dump({"id": f"adv-{i}", "title": f"adv-{i}", "text": text}, f, ensure_ascii=False)
                 f.write("\n")
 
         return output_path
 
     # ---------------------------------------------------------------- loading
     @staticmethod
-    def load_jsonl_corpus(corpus_file: Path) -> List[str]:
+    def load_jsonl_corpus(corpus_file: Path) -> List[dict]:
         corpus = []
         with open(corpus_file, "r", encoding="utf-8") as f:
             for line in f:
@@ -888,7 +913,8 @@ class AdvCorpusPipeline:
                 text = (doc.get("text") or "").strip()
                 if not text:
                     continue
-                corpus.append(f"{title} {text}" if title else text)
+                document = {"title": title, "text": f"{title} {text}" if title else text}
+                corpus.append(document)
         return corpus
 
     def merge_wiki_adv(self, wiki_file: Path, adv_file: Path) -> List[str]:
@@ -921,7 +947,7 @@ class AdvCorpusPipeline:
         ).strip()
 
     # --------------------------------------------------------------- chunking
-    def chunk_texts(self, texts: List[str]) -> List[str]:
+    def chunk_texts(self, texts: List[dict]) -> List[dict]:
         cfg = self.config
         if cfg.chunk_size <= 0:
             raise ValueError("chunk_size must be > 0")
@@ -933,7 +959,9 @@ class AdvCorpusPipeline:
         step = max(1, cfg.chunk_size - cfg.chunk_overlap)
         chunks = []
 
-        for text in tqdm(texts, desc="Chunking Documents", unit="doc", dynamic_ncols=True):
+        for item in tqdm(texts, desc="Chunking Documents", unit="doc", dynamic_ncols=True):
+            title = item.get("title", "")
+            text = item.get("text", "")
             cleaned = (text or "").strip()
             if not cleaned:
                 continue
@@ -941,11 +969,14 @@ class AdvCorpusPipeline:
             if not tokens:
                 continue
 
+            i = 0
             for start in range(0, len(tokens), step):
                 end = min(len(tokens), start + cfg.chunk_size)
                 chunk_text = self._join_tokens(tokens[start:end])
                 if chunk_text:
-                    chunks.append(chunk_text)
+                    chunk_dict = {"title": title, "chunk": i, "text": chunk_text}
+                    chunks.append(chunk_dict)
+                    i += 1
                 if end >= len(tokens):
                     break
 
@@ -957,7 +988,7 @@ class AdvCorpusPipeline:
         mask = attention_mask.unsqueeze(-1).to(last_hidden.dtype)
         return (last_hidden * mask).sum(dim=1) / mask.sum(dim=1).clamp(min=1e-9)
 
-    def embed_chunks(self, chunks: Sequence[str]) -> np.ndarray:
+    def embed_chunks(self, chunks: List[dict]) -> np.ndarray:
         if not chunks:
             return np.zeros((0, 1), dtype=np.float32)
 
@@ -966,7 +997,7 @@ class AdvCorpusPipeline:
             self.tokenizer.model_max_length,
             self.contriever.config.max_position_embeddings,
         )
-        chunks = [(c or "").strip() for c in chunks]
+        chunks = [c.get("text", "").strip() for c in chunks]
 
         order = np.argsort([len(c) for c in chunks])  # minimise padding
         all_embs = [None] * len(chunks)
@@ -996,7 +1027,7 @@ class AdvCorpusPipeline:
         return embs.astype(np.float32)
 
     # ----------------------------------------------------------------- saving
-    def save_chunk_embeds(self, chunks: Sequence[str], embeddings: np.ndarray) -> Tuple[Path, Path]:
+    def save_chunk_embeds(self, chunks: Sequence[dict], embeddings: np.ndarray) -> Tuple[Path, Path]:
         self.corpus_dir.mkdir(parents=True, exist_ok=True)
         json_path, npy_path = self.default_chunk_paths
 
@@ -1123,6 +1154,7 @@ def main():
 
     parser.add_argument("--add-gt", action="store_true", help="add ground truth information to ourput JSON file")
     parser.add_argument("--llm-judge", action="store_true", help="Use an llm as judge to get more accurate ASR")
+    parser.add_argument("--llm-judge-model", type=str, default="Qwen/Qwen2.5-7B-Instruct", help="separate model to run llm as ASR judge")
     parser.add_argument("--similarity", action="store_true", help="Measure the similarity between the target answer and the llm response")
 
     parser.add_argument("--chunk", action="store_true", help="Use chunking")
@@ -1144,9 +1176,14 @@ def main():
     if args.config:
         # Load from config file
         llm_config = LLMConfig.from_yaml(args.config)
+        
 
         with open(args.config, "r") as f:
             config_data = yaml.safe_load(f)
+
+        llm_judge_config = copy.deepcopy(llm_config)
+        llm_data = config_data.get("llm", {})
+        llm_judge_config.model = llm_data.get("llm_judge_model")
 
         attack_cfg = config_data.get("attack", {})
 
@@ -1177,6 +1214,7 @@ def main():
             use_hodor=args.hodor,
             hodor_model=args.hodor_model,
             llm_judge=args.llm_judge,
+            llm_juddge_config=llm_judge_config,
             measure_similarity=args.similarity,
             chunking=chunk,
             chunking_strategy=chunking_strategy,
@@ -1202,6 +1240,8 @@ def main():
             deployment=args.azure_deployment or "",
             model=args.model,
         )
+        llm_judge_config = copy.deepcopy(llm_config)
+        llm_judge_config.model = args.llm_judge_model
     
         # Full config
         config = InceptionRAGConfig(
@@ -1214,6 +1254,7 @@ def main():
             use_hodor=args.hodor,
             hodor_model=args.hodor_model,
             llm_judge=args.llm_judge,
+            llm_juddge_config=llm_judge_config,
             measure_similarity=args.similarity,
             chunking=args.chunk,
             chunking_strategy=args.chunking_strategy,

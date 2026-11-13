@@ -529,7 +529,7 @@ class RAGEvaluator:
         golden_data: List[dict], 
         config: ZOSOConfig,
         corpus_embs: np.ndarray,
-        corpus_texts: List[str],
+        corpus_texts,
         contriever,
         contriever_tokenizer,
         llm_client: LLMClient
@@ -567,7 +567,12 @@ class RAGEvaluator:
         query_emb = self._encode_query(question)
         scores = self.corpus_embs @ query_emb
         top_indices = np.argsort(scores)[::-1][:k]
-        return [self.corpus_texts[i] for i in top_indices]
+
+        if isinstance(self.corpus_texts[0], dict):
+            top_k = [self.corpus_texts[i].get("text", "") for i in top_indices]
+        else:
+            top_k = [self.corpus_texts[i] for i in top_indices]
+        return top_k
     
     def _two_stage_retrieve(self, question: str, poisoned_texts: List[str]) -> List[str]:
         """
@@ -581,7 +586,10 @@ class RAGEvaluator:
         # Stage 1: Retrieve from corpus
         scores = self.corpus_embs @ query_emb
         top_indices = np.argsort(scores)[::-1][:self.config.retrieval_first_k]
-        retrieved_texts = [self.corpus_texts[i] for i in top_indices]
+        if isinstance(self.corpus_texts[0], dict):
+            retrieved_texts = [self.corpus_texts[i].get("text", "") for i in top_indices]
+        else:
+            retrieved_texts = [self.corpus_texts[i] for i in top_indices]
         
         # Stage 2: Merge with poisoned docs, re-rank
         candidate_texts = retrieved_texts + poisoned_texts
@@ -738,7 +746,7 @@ class ZOSOOptimizer:
         suffix_pool: SuffixPool,
         data_manager: DataManager,
         corpus_embs: np.ndarray,
-        corpus_texts: List[str],
+        corpus_texts,
         contriever,
         contriever_tokenizer,
         llm_client: LLMClient,
