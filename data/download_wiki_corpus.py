@@ -229,72 +229,15 @@ def download_msmarco(root):
 
 
 
-def download_hotpotqa(root):
+
+
+def download_nq_hotpot(root, dataset):
     url = "https://dumps.wikimedia.org/enwiki/latest/enwiki-latest-pages-articles-multistream.xml.bz2"
-    wiki_dump_path = root / "custom_corpus" / "hotpotqa" / "enwiki-latest-pages-articles-multistream.xml.bz2s"
-    download(url, wiki_dump_path)
-
-    titles = get_doc_titles(root, "hotpotqa")
-
-    found = 0
-    remaining = len(titles)
-    wiki_corpus = root / "custom_corpus" / "hotpotqa" / "wiki_corpus.jsonl"
-
-    with tarfile.open(wiki_dump_path, "r:bz2") as tar, \
-            open(wiki_corpus, "w", encoding="utf-8") as out:
-
-        members = [m for m in tar.getmembers() if m.isfile()]
-
-        for member in tqdm(members, desc="Processing shards"):
-
-            f = tar.extractfile(member)
-            if f is None:
-                continue
-
-            for line in f:
-
-                page = json.loads(line)
-
-                title = page["title"]
-                text = wikitext_to_text(page["text"])
-
-                if title in titles:
-
-                    wiki_page = {
-                        "title": title,
-                        "text": wikitext_to_text(text),
-                    }
-                    out.write(json.dumps(wiki_page, ensure_ascii=False))
-                    out.write("\n")
-                    # page = {
-                    #     "title": title,
-                    #     "text": text,
-                    # }
-
-                    found += 1
-                    remaining -=1
-                    titles.remove(title)
-
-                    if found % 10000 == 0:
-                        print(f"Found {found:,} pages")
-
-                    if remaining == 0:
-                        print("Found every requested page")
-                        break               
-                    
-
-    print(f"\nExtracted {found:,} pages")
-    print(f"Saved to {wiki_corpus}")
-
-    
-
-def download_nq(root):
-    url = "https://dumps.wikimedia.org/enwiki/latest/enwiki-latest-pages-articles-multistream.xml.bz2"
-    wiki_dump_path = root / "custom_corpus" / "nq" / "enwiki-latest-pages-articles-multistream.xml.bz2s"
+    wiki_dump_path = root / "custom_corpus" / dataset / "enwiki-latest-pages-articles-multistream.xml.bz2s"
     download(url, wiki_dump_path)
 
     
-    titles = get_doc_titles(root, "nq")
+    titles = get_doc_titles(root, dataset)
     
 
     print(f"Searching for {len(titles):,} Wikipedia pages")
@@ -302,7 +245,7 @@ def download_nq(root):
     found = 0
     remaining = len(titles)
 
-    output_path = root / "custom_corpus" / "nq" / "wiki_corpus.jsonl"
+    output_path = root / "custom_corpus" / dataset / "wiki_corpus.jsonl"
 
     with bz2.open(wiki_dump_path, "rb") as wiki_file, \
             open(output_path, "w", encoding="utf-8") as out:
@@ -381,10 +324,8 @@ def main():
 
     if args.dataset == "msmarco" or args.all:
         download_msmarco(root)
-    if args.dataset == "hotpotqa" or args.all:
-        download_hotpotqa(root)
-    if args.dataset == "nq" or args.all:
-        download_nq(root)
+    if args.dataset == "hotpotqa" or args.dataset == "nq" or args.all:
+        download_nq_hotpot(root, args.dataset)
 
 
 if __name__ == "__main__":
