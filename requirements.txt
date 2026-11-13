@@ -28,3 +28,4 @@ tqdm
 pyyaml
 httpx[socks]
 requests
+mwparserfromhell

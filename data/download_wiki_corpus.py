@@ -230,8 +230,8 @@ def download_msmarco(root):
 
 
 def download_hotpotqa(root):
-    url = "https://hotpotqa.s3.amazonaws.com/enwiki-20171001-pages-meta-current-withlinks-processed.tar.bz2"
-    wiki_dump_path = root / "custom_corpus" / "hotpotqa" / "enwiki-20171001-pages-meta-current-withlinks-processed.tar.bz2"
+    url = "https://dumps.wikimedia.org/enwiki/latest/enwiki-latest-pages-articles-multistream.xml.bz2"
+    wiki_dump_path = root / "custom_corpus" / "hotpotqa" / "enwiki-latest-pages-articles-multistream.xml.bz2s"
     download(url, wiki_dump_path)
 
     titles = get_doc_titles(root, "hotpotqa")
