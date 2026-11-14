@@ -554,7 +554,7 @@ class InceptionRAGAttacker:
         success, answer, context, retrieval_first_k_context, final_context, top_k_context = self._try_attack(item, self.global_anchor, self.global_bridge, question)
         result["queries"] += 1
         result["context"] = context
-        result["retrival_first_k_context"] = retrieval_first_k_context
+        result["retrieval_first_k_context"] = retrieval_first_k_context
         result["retrieval_top_k_context"] = top_k_context
         if self.config.reranker:
             result["reranker_top_k_context"] = final_context
@@ -579,7 +579,7 @@ class InceptionRAGAttacker:
                 success, answer, context, retrieval_first_k_context, final_context, top_k_context  = self._try_attack(item, test_anchor, self.global_bridge, question)
                 result["queries"] += 1
                 result["context"] = context
-                result["retrival_first_k_context"] = retrieval_first_k_context
+                result["retrieval_first_k_context"] = retrieval_first_k_context
                 result["retrieval_top_k_context"] = top_k_context
                 if self.config.reranker:
                     result["reranker_top_k_context"] = final_context
@@ -603,7 +603,7 @@ class InceptionRAGAttacker:
                 success, answer, context, retrieval_first_k_context, final_context, top_k_context  = self._try_attack(item, best_anchor, test_bridge, question)
                 result["queries"] += 1
                 result["context"] = context
-                result["retrival_first_k_context"] = retrieval_first_k_context
+                result["retrieval_first_k_context"] = retrieval_first_k_context
                 result["retrieval_top_k_context"] = top_k_context
                 if self.config.reranker:
                     result["reranker_top_k_context"] = final_context
