@@ -186,7 +186,7 @@ class PassageReranker:
 
     def rank(self, query: str, passages: List[str], top_k: Optional[int] = None) -> Optional[List[int]]:
         """Return passage indices ordered best-first, or None if reranking isn't possible."""
-        if not passages or not self.cross_encoder is None:
+        if not passages or self.cross_encoder is None:
             return None
         try:
             scores = self.cross_encoder.predict([(query, p) for p in passages])
@@ -236,8 +236,15 @@ class TwoStageRetriever:
         with torch.no_grad():
             emb = self.contriever(**inputs).last_hidden_state.mean(dim=1).cpu().numpy()[0]
         return emb / (np.linalg.norm(emb) + 1e-8)
+
+    @staticmethod
+    def _as_record(doc) -> dict:
+        """Normalise a corpus entry (dict or plain str) to {title, chunk, text}."""
+        if isinstance(doc, dict):
+            return {"title": doc.get("title"), "chunk": doc.get("chunk"), "text": doc.get("text", "")}
+        return {"title": None, "chunk": None, "text": doc}
     
-    def retrieve(self, question: str, poisoned_texts: List[str] = None) -> Tuple[List[str], int, List[dict], List[dict]]:
+    def retrieve(self, question: str, poisoned_texts: List[str] = None) -> Tuple[List[str], int, List[dict], List[dict], List[dict]]:
         """
         Two-stage retrieval:
         Stage 1: Retrieve first_k from corpus
@@ -249,10 +256,8 @@ class TwoStageRetriever:
         corpus_scores = self.corpus_embs @ query_emb
         top_indices = np.argsort(corpus_scores)[::-1][:self.config.retrieval_first_k]
 
-        if isinstance(self.corpus_texts[0], dict):
-            candidate_texts = [self.corpus_texts[i].get("text", "") for i in top_indices]
-        else:
-            candidate_texts = [self.corpus_texts[i] for i in top_indices]
+        candidate_records = [self._as_record(self.corpus_texts[i]) for i in top_indices]
+        candidate_texts = [r["text"] for r in candidate_records]
         num_corpus = len(candidate_texts)
         candidate_scores = corpus_scores[top_indices]
 
@@ -260,20 +265,29 @@ class TwoStageRetriever:
         if not self.config.chunking and poisoned_texts:
             poisoned_embs = np.array([self.encode(t) for t in poisoned_texts])
             candidate_texts += list(poisoned_texts)
+            candidate_records += [self._as_record(t) for t in poisoned_texts]
             candidate_scores = np.concatenate([candidate_scores, poisoned_embs @ query_emb])
 
+        # pre-rerank top-k: what the retriever alone selects (by embedding score)
+        top_k_indices = np.argsort(candidate_scores)[::-1][:self.config.retrieval_top_k]
         final_indices = None
         if self.reranker is not None:
-            final_indices = self.reranker.rank(question, candidate_texts, top_k=self.config.reranker_top_k)
+            order = self.reranker.rank(question, [candidate_texts[i] for i in top_k_indices], top_k=self.config.reranker_top_k)
+            final_indices = None if order is None else [top_k_indices[j] for j in order]
 
         if final_indices is None:
-            final_indices = np.argsort(candidate_scores)[::-1][:self.config.retrieval_top_k]
-
+            final_indices = top_k_indices
         adv_count = sum(1 for idx in final_indices if idx >= num_corpus)
         
         torch.cuda.empty_cache()
 
-        return [candidate_texts[i] for i in final_indices], adv_count, [self.corpus_texts[i] for i in top_indices], [candidate_texts[i] for i in final_indices]
+        return (
+            [candidate_texts[i] for i in final_indices],        # text -> LLM
+            adv_count,
+            [self.corpus_texts[i] for i in top_indices],        # first_k (unchanged)
+            [candidate_records[i] for i in final_indices],      # {title, chunk, text} dicts
+            [candidate_records[i] for i in top_k_indices],  
+        )
 
 # ============================================================================
 # Suffix Pool
@@ -482,7 +496,7 @@ class InceptionRAGAttacker:
         anchor: str, 
         bridge: str, 
         question: str
-    ) -> Tuple[bool, str, List[str], List[dict], List[dict]]:
+    ) -> Tuple[bool, str, List[str], List[dict], List[dict],List[dict]]:
         """Single attack attempt"""
         
 
@@ -493,13 +507,12 @@ class InceptionRAGAttacker:
             if self.config.skip_retrieval:
                 context = poisoned
             else:
-                context, adv_count, retrival_first_k_context, final_context = self.retriever.retrieve(question, poisoned)
+                context, adv_count, retrival_first_k_context, final_context, top_k_context  = self.retriever.retrieve(question, poisoned)
 
         else:
-            context, _, retrival_first_k_context, final_context = self.retriever.retrieve(question)
+            context, _, retrival_first_k_context, final_context, top_k_context  = self.retriever.retrieve(question)
 
-        
-        random.shuffle(context)
+        #random.shuffle(context)
         
         try:
             # Apply HODOR defense if enabled
@@ -508,9 +521,9 @@ class InceptionRAGAttacker:
             else:
                 answer = self._call_llm(question, context)
             success = self._check_success(answer, item)
-            return success, answer, context, retrival_first_k_context, final_context
+            return success, answer, context, retrival_first_k_context, final_context, top_k_context 
         except Exception as e:
-            return False, str(e), context, retrival_first_k_context, final_context
+            return False, str(e), context, retrival_first_k_context, final_context, top_k_context 
     
     def attack_single(self, item: dict) -> Dict:
         """
@@ -538,14 +551,13 @@ class InceptionRAGAttacker:
         
         # ========== L1: Global Probe ==========
         print(f"    [L1] Global...", end=" ", flush=True)
-        success, answer, context, retrieval_first_k_context, final_context = self._try_attack(item, self.global_anchor, self.global_bridge, question)
+        success, answer, context, retrieval_first_k_context, final_context, top_k_context = self._try_attack(item, self.global_anchor, self.global_bridge, question)
         result["queries"] += 1
         result["context"] = context
         result["retrival_first_k_context"] = retrieval_first_k_context
+        result["retrieval_top_k_context"] = top_k_context
         if self.config.reranker:
             result["reranker_top_k_context"] = final_context
-        else:
-            result["retrieval_top_k_context"] = final_context
         
         if success:
             print(f"✓")
@@ -564,14 +576,13 @@ class InceptionRAGAttacker:
             
             for i, a_idx in enumerate(self.anchor_neighbors):
                 test_anchor = self.pool.anchors[a_idx]
-                success, answer, context, retrieval_first_k_context, final_context = self._try_attack(item, test_anchor, self.global_bridge, question)
+                success, answer, context, retrieval_first_k_context, final_context, top_k_context  = self._try_attack(item, test_anchor, self.global_bridge, question)
                 result["queries"] += 1
                 result["context"] = context
                 result["retrival_first_k_context"] = retrieval_first_k_context
+                result["retrieval_top_k_context"] = top_k_context
                 if self.config.reranker:
                     result["reranker_top_k_context"] = final_context
-                else:
-                    result["retrieval_top_k_context"] = final_context
                 
                 if success:
                     print(f"✓ [{i+1}]")
@@ -589,14 +600,13 @@ class InceptionRAGAttacker:
             
             for i, b_idx in enumerate(self.bridge_neighbors):
                 test_bridge = self.pool.bridges[b_idx]
-                success, answer, context, retrieval_first_k_context, final_context = self._try_attack(item, best_anchor, test_bridge, question)
+                success, answer, context, retrieval_first_k_context, final_context, top_k_context  = self._try_attack(item, best_anchor, test_bridge, question)
                 result["queries"] += 1
                 result["context"] = context
                 result["retrival_first_k_context"] = retrieval_first_k_context
+                result["retrieval_top_k_context"] = top_k_context
                 if self.config.reranker:
                     result["reranker_top_k_context"] = final_context
-                else:
-                    result["retrieval_top_k_context"] = final_context
                 
                 if success:
                     print(f"✓ [{i+1}]")
