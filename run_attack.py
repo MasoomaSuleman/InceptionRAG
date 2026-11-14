@@ -272,11 +272,8 @@ class TwoStageRetriever:
         adv_count = sum(1 for idx in final_indices if idx >= num_corpus)
         
         torch.cuda.empty_cache()
-        if isinstance(self.corpus_texts[0], dict):
-            context = [self.corpus_texts[i].get("text", "") for i in top_indices]
-        else:
-            context = [self.corpus_texts[i] for i in top_indices]
-        return context, adv_count, [self.corpus_texts[i] for i in top_indices], [self.corpus_texts[i] for i in final_indices]
+
+        return [candidate_texts[i] for i in final_indices], adv_count, [self.corpus_texts[i] for i in top_indices], [candidate_texts[i] for i in final_indices]
 
 # ============================================================================
 # Suffix Pool
@@ -913,7 +910,7 @@ class AdvCorpusPipeline:
                 text = (doc.get("text") or "").strip()
                 if not text:
                     continue
-                document = {"title": title, "text": f"{title} {text}" if title else text}
+                document = {"title": title, "text": f"{title} {text}" if title and not title.startswith("adv-") else text}
                 corpus.append(document)
         return corpus
 
