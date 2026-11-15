@@ -116,7 +116,8 @@ def encode_corpus_contriever(
     for cid in corpus_ids:
         doc = corpus[cid]
         text = doc.get("title", "") + " " + doc.get("text", "")
-        texts.append(text.strip())
+        text_dict = {"title": doc.get("title", ""), "chunk": None, "text": text.strip()}
+        texts.append(text_dict)
     
     logging.info(f"Encoding {len(texts)} documents...")
     
@@ -124,7 +125,7 @@ def encode_corpus_contriever(
     # batch_size=1 ensures no padding is needed
     all_embs = []
     for i in range(0, len(texts), 1):  # batch_size=1, NO PADDING
-        doc = texts[i]
+        doc = texts[i].get("text", "")
         inputs = tokenizer(
             [doc], 
             padding=False,  # NO PADDING!

@@ -179,7 +179,7 @@ class PassageReranker:
             if cache_hit is None:
                 snapshot_download(repo_id=self.model_name, cache_dir=hf_cache)
 
-            self.cross_encoder = CrossEncoder(self.model_name)
+            self.cross_encoder = CrossEncoder(self.model_name, device="cpu")
         except Exception as e:
             print(f"[PassageReranker] failed to load {self.model_name}: {e}")
             self.cross_encoder = None
@@ -234,14 +234,18 @@ class TwoStageRetriever:
         inputs = {k: v.to(self.device) for k, v in inputs.items()}
         
         with torch.no_grad():
-            emb = self.contriever(**inputs).last_hidden_state.mean(dim=1).cpu().numpy()[0]
+            emb = self.contriever(**inputs).last_hidden_state.mean(dim=1).float().cpu().numpy()[0]
         return emb / (np.linalg.norm(emb) + 1e-8)
 
     @staticmethod
     def _as_record(doc) -> dict:
         """Normalise a corpus entry (dict or plain str) to {title, chunk, text}."""
         if isinstance(doc, dict):
-            return {"title": doc.get("title"), "chunk": doc.get("chunk"), "text": doc.get("text", "")}
+            doc_dict = {"title": doc.get("title"), "chunk": doc.get("chunk"), "text": doc.get("text", "")}
+            if doc.get("query_id") is not None:
+                doc_dict["query_id"] = doc.get("query_id")
+                doc_dict["doc_type"] = doc.get("doc_type")
+            return 
         return {"title": None, "chunk": None, "text": doc}
     
     def retrieve(self, question: str, poisoned_texts: List[str] = None) -> Tuple[List[str], int, List[dict], List[dict], List[dict]]:
@@ -309,7 +313,7 @@ class SuffixPool:
         print(f"  Loaded {len(self.anchors)} anchors, {len(self.bridges)} bridges")
         
         # Encode
-        self.embedder = SentenceTransformer('all-mpnet-base-v2')
+        self.embedder = SentenceTransformer('all-mpnet-base-v2', device="cpu")
         self.anchor_embs = self.embedder.encode(self.anchors, convert_to_numpy=True)
         self.bridge_embs = self.embedder.encode(self.bridges, convert_to_numpy=True)
         
@@ -842,7 +846,7 @@ class AdvCorpusPipeline:
         contriever_tokenizer,
         data_root: Path,
         dataset: str,
-        embed_batch_size: int = 64,
+        embed_batch_size: int = 16,
     ):
         self.config = config
         self.contriever = contriever
@@ -877,11 +881,12 @@ class AdvCorpusPipeline:
         output_path: Path,
     ) -> Path:
         cfg = self.config
-        adv_corpus: List[str] = []
+        adv_corpus: List[tuple] = []
 
         for item in adv_texts:
             adv = item.get("ad_text") or {}
             question = str(item.get("question") or item.get("text") or "").strip()
+            query_id = str(item.get("id", "")).strip()
             attribute_doc = str(adv.get("attribute_document") or adv.get("text1") or "").strip()
             bridge_doc = str(adv.get("bridge_document") or adv.get("text2") or "").strip()
 
@@ -891,17 +896,25 @@ class AdvCorpusPipeline:
             attribute_doc = f"{attribute_doc} {noisy_anchor}" if attribute_doc else ""
             bridge_doc = f"{bridge_doc} {noisy_bridge}" if bridge_doc else ""
 
-            adv_corpus.append(inject_dual_ended(attribute_doc, question, cfg))
-            adv_corpus.append(inject_dual_ended(bridge_doc, question, cfg))
+            final_attribute = inject_dual_ended(attribute_doc, question, cfg)
+            final_bridge = inject_dual_ended(bridge_doc, question, cfg)
+            adv_corpus.append((query_id, "attribute", final_attribute))
+            adv_corpus.append((query_id, "bridge", final_bridge))
 
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         with open(output_path, "w", encoding="utf-8") as f:
-            for i, text in enumerate(adv_corpus):
+            for (qid, doc_type, text) in adv_corpus:
                 text = text.strip()
                 if not text:
                     continue
-                json.dump({"id": f"adv-{i}", "title": f"adv-{i}", "text": text}, f, ensure_ascii=False)
+                doc_dict = {
+                    "id": f"adv-{qid}-{doc_type}", 
+                    "query_id": qid,
+                    "doc_type": doc_type,
+                    "title": f"adv-{qid}-{doc_type}", 
+                    "text": text}
+                json.dump(doc_dict, f, ensure_ascii=False)
                 f.write("\n")
 
         return output_path
@@ -969,6 +982,7 @@ class AdvCorpusPipeline:
         for item in tqdm(texts, desc="Chunking Documents", unit="doc", dynamic_ncols=True):
             title = item.get("title", "")
             text = item.get("text", "")
+            query_id = item.get("query_id", None)
             cleaned = (text or "").strip()
             if not cleaned:
                 continue
@@ -982,6 +996,9 @@ class AdvCorpusPipeline:
                 chunk_text = self._join_tokens(tokens[start:end])
                 if chunk_text:
                     chunk_dict = {"title": title, "chunk": i, "text": chunk_text}
+                    if query_id:
+                        chunk_dict["query_id"] = query_id
+                        chunk_dict["doc_type"] = item.get("doc_type", "")
                     chunks.append(chunk_dict)
                     i += 1
                 if end >= len(tokens):
@@ -1021,7 +1038,7 @@ class AdvCorpusPipeline:
             )
             inputs = {k: v.to(device) for k, v in inputs.items()}
 
-            with torch.no_grad():
+            with torch.inference_model():
                 out = self.contriever(**inputs)
                 embs = self._mean_pool(out.last_hidden_state, inputs["attention_mask"])
 
@@ -1454,7 +1471,7 @@ def main():
     # Load Contriever
     print("\n[2/5] Loading Contriever...")
     contriever_tokenizer = AutoTokenizer.from_pretrained("facebook/contriever")
-    contriever = AutoModel.from_pretrained("facebook/contriever").eval()
+    contriever = AutoModel.from_pretrained("facebook/contriever", torch_dtype=torch.fload16).eval().to(device)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     contriever = contriever.to(device)
     print(f"  Device: {device}")
@@ -1501,7 +1518,7 @@ def main():
         print(f"  Golden set size: {zoso_config.golden_set_size}")
         
         # Initialize ZOSO components
-        embedder = SentenceTransformer('all-mpnet-base-v2')
+        embedder = SentenceTransformer('all-mpnet-base-v2', device="cpu")
         zoso_pool = ZOSOSuffixPool.from_file(Path(args.suffix_pool), embedder)
         
         data_mgr = DataManager(all_data, zoso_config, client)
