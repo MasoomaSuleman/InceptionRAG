@@ -109,10 +109,13 @@ def load_qrels_by_query(qrels_paths: Iterable[Path]) -> Dict[str, List[str]]:
     return {qid: sorted(corpus_ids) for qid, corpus_ids in corpus_ids_by_query.items()}
 
 def annotate_queries_with_corpus_ids(
-    queries: List[Dict[str, str]],
-    qrels_dir: Path,
+    root, dataset
 ) -> List[Dict[str, str]]:
     """Attach qrels-derived corpus_ids to each query record for debugging."""
+    queries_file = root / f"samples/{dataset}_queries_100.json"
+    qrels_dir = root / f"datasets/{dataset}/qrels"
+    queries = load_queries(queries_file)
+    
     qrels_paths = [
         qrels_dir / "train.tsv",
         qrels_dir / "dev.tsv",
@@ -141,12 +144,8 @@ def load_corpus(filename):
 
 def get_doc_titles(root, dataset):
     corpus_file = root / f"datasets/{dataset}/corpus.jsonl"
-    queries_file = root / f"samples/{dataset}_queries_100.json"
-    qrels_dir = root / f"datasets/{dataset}/qrels"
     
-    
-    queries = load_queries(queries_file)
-    annotated_queries = annotate_queries_with_corpus_ids(queries, Path(qrels_dir))
+    annotated_queries = annotate_queries_with_corpus_ids(root, dataset)
     corpus = load_corpus(corpus_file)
 
     titles = []
@@ -184,48 +183,80 @@ def wikitext_to_text(wikitext: str) -> str:
     text = re.sub(r"\n\s*\n+", "\n\n", text)
     return text.strip()
 
+def golden_passages(root, dataset): 
+    golden_output = root / "custom_corpus" / dataset / "golden_passages_corpus.jsonl"
+    
+    if not golden_output.exists():
+        print("Finding query golden passages...")
+        corpus_file = root / f"datasets/{dataset}/corpus.jsonl"
+        corpus = load_corpus(corpus_file)
+        annotated_queries = annotate_queries_with_corpus_ids(root, dataset)
+        
+        goldens = []
+
+        for item in annotated_queries:
+            for doc_id in item["corpus_ids"]:
+                if doc_id in corpus:
+                    passage = corpus[doc_id].get("text", "")
+                    title = corpus[doc_id].get("title", "")
+                    qid = item["id"]
+                    goldens.append({
+                        "id": f"golden-{qid}-{doc_id}",
+                        "title": f"golden-{qid}-{doc_id}",
+                        "chunk": None,
+                        "query_id": qid,
+                        "doc_type": "golden",
+                        "text": passage,
+                    })
+        
+        with open(golden_output, "w", encoding="utf-8") as f:
+            for doc in goldens:
+                f.write(json.dumps(doc, ensure_ascii=False) + "\n")
+        
+        print(f"Golden Passages corpus saved at {golden_output}")
+    else:
+        print(f"Golden Passages corpus already exists at {golden_output}")
+                
+
 
 def download_msmarco(root):
     url = "https://msmarco.z22.web.core.windows.net/msmarcoranking/msmarco-docs.tsv.gz"
     docs_path = root / "custom_corpus" / "msmarco" / "msmarco-docs.tsv.gz"
     download(url, docs_path)
-
-    corpus_file = root / "datasets/msmarco/corpus.jsonl"
-    queries_file = root / "samples/msmarco_queries_100.json"
-    qrels_dir = root / "datasets/msmarco/qrels"
     
+    golden_passages(root, "msmarco")
     
-    queries = load_queries(queries_file)
-    annotated_queries = annotate_queries_with_corpus_ids(queries, Path(qrels_dir))
-    doc_ids = get_doc_ids(annotated_queries)
-
     wiki_corpus = root / "custom_corpus" / "msmarco" / "wiki_corpus.jsonl"
+    if not wiki_corpus.exists():
+        annotated_queries = annotate_queries_with_corpus_ids(root, "msmarco")
+        doc_ids = get_doc_ids(annotated_queries)
+        
+        total = 3213835      # number of MS MARCO documents
 
+        with gzip.open(docs_path, "rt", encoding="utf-8") as fin, \
+             open(wiki_corpus, "w", encoding="utf-8") as fout:
 
-    total = 3213835      # number of MS MARCO documents
+            for line in tqdm(fin, total=total):
 
-    with gzip.open(docs_path, "rt", encoding="utf-8") as fin, \
-         open(wiki_corpus, "w", encoding="utf-8") as fout:
+                parts = line.rstrip("\n").split("\t", 3)
 
-        for line in tqdm(fin, total=total):
+                if len(parts) != 4:
+                    continue
 
-            parts = line.rstrip("\n").split("\t", 3)
+                docid, url, title, body = parts
 
-            if len(parts) != 4:
-                continue
+                page = {
+                    "id": docid,
+                    "title": title,
+                    "text": body,
+                }
 
-            docid, url, title, body = parts
+                fout.write(json.dumps(page, ensure_ascii=False))
+                fout.write("\n")
 
-            page = {
-                "id": docid,
-                "title": title,
-                "text": body,
-            }
-
-            fout.write(json.dumps(page, ensure_ascii=False))
-            fout.write("\n")
-
-    print(f"Saved {wiki_corpus}")
+        print(f"Saved {wiki_corpus}")
+    else:
+        print(f"Wiki corpus already exists at {wiki_corpus}")
 
 
 
@@ -235,76 +266,82 @@ def download_nq_hotpot(root, dataset):
     url = "https://dumps.wikimedia.org/enwiki/latest/enwiki-latest-pages-articles-multistream.xml.bz2"
     wiki_dump_path = root / "custom_corpus" / dataset / "enwiki-latest-pages-articles-multistream.xml.bz2s"
     download(url, wiki_dump_path)
-
     
-    titles = get_doc_titles(root, dataset)
-    
-
-    print(f"Searching for {len(titles):,} Wikipedia pages")
-
-    found = 0
-    remaining = len(titles)
+    golden_passages(root, dataset)
 
     output_path = root / "custom_corpus" / dataset / "wiki_corpus.jsonl"
+    
+    if not output_path.exists():
+        titles = get_doc_titles(root, dataset)
+        
+        print(f"Searching for {len(titles):,} Wikipedia pages")
 
-    with bz2.open(wiki_dump_path, "rb") as wiki_file, \
-            open(output_path, "w", encoding="utf-8") as out:
+        found = 0
+        remaining = len(titles)
+        
+        with bz2.open(wiki_dump_path, "rb") as wiki_file, \
+                open(output_path, "w", encoding="utf-8") as out:
 
-        context = ET.iterparse(
-            wiki_file,
-            events=("end",),
-        )
+            context = ET.iterparse(
+                wiki_file,
+                events=("end",),
+            )
 
-        for _, elem in tqdm(context):
+            for _, elem in tqdm(context):
 
-            if not elem.tag.endswith("page"):
-                continue
+                if not elem.tag.endswith("page"):
+                    continue
 
-            title_elem = elem.find("./{*}title")
+                title_elem = elem.find("./{*}title")
 
-            if title_elem is None:
+                if title_elem is None:
+                    elem.clear()
+                    continue
+
+                title = title_elem.text
+
+                if title not in titles:
+                    elem.clear()
+                    continue
+
+                revision = elem.find("./{*}revision")
+
+                text = ""
+
+                if revision is not None:
+
+                    text_elem = revision.find("./{*}text")
+
+                    if text_elem is not None and text_elem.text is not None:
+                        text = text_elem.text
+
+                page = {
+                    "title": title,
+                    "text": wikitext_to_text(text),
+                }
+
+                out.write(json.dumps(page, ensure_ascii=False))
+                out.write("\n")
+
+                found += 1
+
+                if found % 1000 == 0:
+                    print(f"Found {found:,} pages")
+
                 elem.clear()
-                continue
+                titles.remove(title)
+                remaining -= 1
+                if remaining == 0:
+                    print("Found every requested page")
+                    break
 
-            title = title_elem.text
+        print(f"\nExtracted {found:,} pages")
+        print(f"Saved to {output_path}")
+    
+    else:
+        print(f"Wiki corpus already exists at {output_path}")
+    
 
-            if title not in titles:
-                elem.clear()
-                continue
-
-            revision = elem.find("./{*}revision")
-
-            text = ""
-
-            if revision is not None:
-
-                text_elem = revision.find("./{*}text")
-
-                if text_elem is not None and text_elem.text is not None:
-                    text = text_elem.text
-
-            page = {
-                "title": title,
-                "text": wikitext_to_text(text),
-            }
-
-            out.write(json.dumps(page, ensure_ascii=False))
-            out.write("\n")
-
-            found += 1
-
-            if found % 1000 == 0:
-                print(f"Found {found:,} pages")
-
-            elem.clear()
-            titles.remove(title)
-            remaining -= 1
-            if remaining == 0:
-                print("Found every requested page")
-                break
-
-    print(f"\nExtracted {found:,} pages")
-    print(f"Saved to {output_path}")
 
 def main():
     parser = argparse.ArgumentParser(description="Download and prepare BEIR datasets")
@@ -319,12 +356,11 @@ def main():
     dataset_path.mkdir(parents=True, exist_ok=True)
     custom_corpus_path.mkdir(parents=True, exist_ok=True)
 
-
-            
-
     if args.dataset == "msmarco" or args.all:
         download_msmarco(root)
-    if args.dataset == "hotpotqa" or args.dataset == "nq" or args.all:
+    if args.dataset == "hotpotqa" or args.all:
+        download_nq_hotpot(root, args.dataset)
+    if args.dataset == "nq" or args.all:
         download_nq_hotpot(root, args.dataset)
 
 

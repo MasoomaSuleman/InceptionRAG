@@ -922,23 +922,28 @@ class AdvCorpusPipeline:
 
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
+        docs = []
+        
+        for (qid, doc_type, text) in adv_corpus:
+            text = text.strip()
+            if not text:
+                continue
+            doc_dict = {
+                "id": f"adv-{qid}-{doc_type}", 
+                "query_id": qid,
+                "doc_type": doc_type,
+                "title": f"adv-{qid}-{doc_type}", 
+                "text": text}
+            docs.append(doc_dict)
+                
         with open(output_path, "w", encoding="utf-8") as f:
-            for (qid, doc_type, text) in adv_corpus:
-                text = text.strip()
-                if not text:
-                    continue
-                doc_dict = {
-                    "id": f"adv-{qid}-{doc_type}", 
-                    "query_id": qid,
-                    "doc_type": doc_type,
-                    "title": f"adv-{qid}-{doc_type}", 
-                    "text": text}
-                json.dump(doc_dict, f, ensure_ascii=False)
-                f.write("\n")
-
+            for d in docs:
+                f.write(json.dumps(d, ensure_ascii=False) + "\n")
+      
         return output_path
 
     # ---------------------------------------------------------------- loading
+    @staticmethod
     @staticmethod
     def load_jsonl_corpus(corpus_file: Path) -> List[dict]:
         corpus = []
@@ -952,12 +957,21 @@ class AdvCorpusPipeline:
                 text = (doc.get("text") or "").strip()
                 if not text:
                     continue
-                document = {"title": title, "text": f"{title} {text}" if title and not title.startswith("adv-") else text}
+
+                is_adv = doc.get("query_id") is not None
+                document = {
+                    "title": title,
+                    "text": text,
+                }
+                if is_adv:
+                    for k in ["id", "query_id", "doc_type"]:
+                        if doc.get(k) is not None:
+                            document[k] = doc[k]
                 corpus.append(document)
         return corpus
 
-    def merge_wiki_adv(self, wiki_file: Path, adv_file: Path) -> List[str]:
-        return self.load_jsonl_corpus(wiki_file) + self.load_jsonl_corpus(adv_file)
+    def merge_wiki_adv(self, wiki_file: Path, adv_file: Path, golden_file: Path) -> List[str]:
+        return self.load_jsonl_corpus(wiki_file) + self.load_jsonl_corpus(golden_file) + self.load_jsonl_corpus(adv_file)
 
     # -------------------------------------------------------------- tokenizers
 
@@ -1096,7 +1110,7 @@ class AdvCorpusPipeline:
                 return None
             return file
 
-        file = self.corpus_dir / "adv_docs.json"
+        file = self.corpus_dir / "adv_corpus.jsonl"
         if file.exists():
             return file
 
@@ -1113,11 +1127,22 @@ class AdvCorpusPipeline:
         if not wiki_arg:
             print("Please run 'data/download_wiki_corpus.py' first")
         return None
+        
+    def get_golden_file(self, golden_arg: Optional[str]) -> Optional[Path]:
+        print("Loading golden passages corpus...")
+        file = Path(golden_arg) if golden_arg else self.corpus_dir / "golden_passages_corpus.jsonl"
+        if file.exists():
+            return file
+        print(f"Wiki Corpus not found at {file}")
+        if not gol:
+            print("Please run 'data/download_wiki_corpus.py' first")
+        return None
 
     def prepare_corpus(
         self,
         wiki_file: Path,
         adv_file: Path,
+        golden_file: Path,
         custom_texts: Optional[Path] = None,
         custom_embs: Optional[Path] = None,
     ) -> Tuple[Path, Path]:
@@ -1130,7 +1155,7 @@ class AdvCorpusPipeline:
             return text_file, embs_file
 
         print("Creating poisoned Corpus...")
-        merged = self.merge_wiki_adv(wiki_file, adv_file)
+        merged = self.merge_wiki_adv(wiki_file, adv_file, golden_file)
         chunks = self.chunk_texts(merged)
         print("Embedding chunks...")
         embeddings = self.embed_chunks(chunks)
@@ -1203,6 +1228,7 @@ def main():
     parser.add_argument("--chunk", action="store_true", help="Use chunking")
     parser.add_argument("--adv-docs", type=str, default=None, help="path to adversarial passages")
     parser.add_argument("--wiki-corpus", type=str, default=None, help="path to wiki corpus")
+    parser.add_argument("--golden-corpus", type=str, default=None, help="path to golden passages corpus")
     parser.add_argument("--chunking-strategy", type=str, default="word-based", choices=["word-based", "token-based"], help="word-based or token-based strategy to chunk corpus")
     parser.add_argument("--chunk-size", type=int, default=256, help="length of each chunk")
     parser.add_argument("--chunk-overlap", type=int, default=12, help="overlap between adjacent chunks")
@@ -1602,9 +1628,13 @@ def main():
         wiki_file = pipeline.get_wiki_file(args.wiki_corpus)
         if wiki_file is None:
             return
+            
+        golden_file = pipeline.get_golden_file(args.golden_corpus)
+        if golden_file is None:
+            return
 
         args.corpus_texts, args.corpus_embs = pipeline.prepare_corpus(
-            wiki_file, adv_file, args.custom_corpus_texts, args.custom_corpus_embs
+            wiki_file, adv_file, golden_file, args.custom_corpus_texts, args.custom_corpus_embs
         )
 
     print("\n[4/5] Loading corpus...")
