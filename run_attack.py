@@ -283,7 +283,6 @@ class TwoStageRetriever:
             final_indices = top_k_indices
         adv_count = sum(1 for idx in final_indices if idx >= num_corpus)
         
-        torch.cuda.empty_cache()
 
         return (
             [candidate_texts[i] for i in final_indices],        # text -> LLM
@@ -1038,7 +1037,7 @@ class AdvCorpusPipeline:
             )
             inputs = {k: v.to(device) for k, v in inputs.items()}
 
-            with torch.inference_model():
+            with torch.inference_mode():
                 out = self.contriever(**inputs)
                 embs = self._mean_pool(out.last_hidden_state, inputs["attention_mask"])
 
@@ -1471,7 +1470,7 @@ def main():
     # Load Contriever
     print("\n[2/5] Loading Contriever...")
     contriever_tokenizer = AutoTokenizer.from_pretrained("facebook/contriever")
-    contriever = AutoModel.from_pretrained("facebook/contriever", torch_dtype=torch.fload16).eval().to(device)
+    contriever = AutoModel.from_pretrained("facebook/contriever", torch_dtype=torch.float16).eval()
     device = "cuda" if torch.cuda.is_available() else "cpu"
     contriever = contriever.to(device)
     print(f"  Device: {device}")

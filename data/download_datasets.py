@@ -70,7 +70,7 @@ def encode_corpus_contriever(
     dataset_name: str,
     batch_size: int = 64,
     max_docs: int = None,
-) -> Tuple[np.ndarray, List[str]]:
+):
     """
     Encode corpus with Contriever and save embeddings.
     
@@ -89,7 +89,7 @@ def encode_corpus_contriever(
     
     output_dir.mkdir(parents=True, exist_ok=True)
     emb_path = output_dir / f"{dataset_name}_contriever_embs.npy"
-    text_path = output_dir / f"{dataset_name}_corpus_texts.json"
+    text_path = output_dir / f"{dataset_name}_corpus_texts.jsonl"
     
     # Check cache
     if emb_path.exists() and text_path.exists():
@@ -119,43 +119,42 @@ def encode_corpus_contriever(
         text_dict = {"title": doc.get("title", ""), "chunk": None, "text": text.strip()}
         texts.append(text_dict)
     
-    logging.info(f"Encoding {len(texts)} documents...")
-    
-    # Encode in batches - NO PADDING! Each doc encoded independently
-    # batch_size=1 ensures no padding is needed
-    all_embs = []
-    for i in range(0, len(texts), 1):  # batch_size=1, NO PADDING
-        doc = texts[i].get("text", "")
-        inputs = tokenizer(
-            [doc], 
-            padding=False,  # NO PADDING!
-            truncation=True, 
-            max_length=512, 
-            return_tensors="pt"
-        )
-        inputs = {k: v.to(device) for k, v in inputs.items()}
+    if not emb_path.exists():
+        logging.info(f"Encoding {len(texts)} documents...")
         
-        with torch.no_grad():
-            outputs = model(**inputs)
-            embs = outputs.last_hidden_state.mean(dim=1).cpu().numpy()
+        # Encode in batches - NO PADDING! Each doc encoded independently
+        # batch_size=1 ensures no padding is needed
+        all_embs = []
+        for i in range(0, len(texts), 1):  # batch_size=1, NO PADDING
+            doc = texts[i].get("text", "")
+            inputs = tokenizer(
+                [doc], 
+                padding=False,  # NO PADDING!
+                truncation=True, 
+                max_length=512, 
+                return_tensors="pt"
+            )
+            inputs = {k: v.to(device) for k, v in inputs.items()}
+            
+            with torch.no_grad():
+                outputs = model(**inputs)
+                embs = outputs.last_hidden_state.mean(dim=1).cpu().numpy()
+            
+            all_embs.append(embs)
+            
+            if (i + 1) % 10000 == 0:
+                logging.info(f"  Encoded {i + 1}/{len(texts)} documents")
         
-        all_embs.append(embs)
+        embs = np.vstack(all_embs)
+        embs = embs / (np.linalg.norm(embs, axis=1, keepdims=True) + 1e-8)
         
-        if (i + 1) % 10000 == 0:
-            logging.info(f"  Encoded {i + 1}/{len(texts)} documents")
-    
-    embs = np.vstack(all_embs)
-    embs = embs / (np.linalg.norm(embs, axis=1, keepdims=True) + 1e-8)
-    
-    # Save
-    np.save(emb_path, embs)
+        # Save
+        np.save(emb_path, embs)
     with open(text_path, "w") as f:
         json.dump(texts, f)
     
     logging.info(f"Saved embeddings to {emb_path}")
     logging.info(f"Saved texts to {text_path}")
-    
-    return embs, texts
 
 
 def prepare_dataset(
