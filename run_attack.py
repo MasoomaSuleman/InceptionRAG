@@ -1362,7 +1362,7 @@ def main():
             elif args.dataset:
                 ds = args.dataset.lower()
                 # Data source priority: InceptionRAG/data/datasets/{ds}/queries.jsonl
-                raw_queries = DATA_ROOT / f"datasets/{ds}/queries.jsonl"
+                raw_queries = DATA_ROOT / f"samples/{ds}_queries_100.json"
                 
                 if not raw_queries.exists():
                     print(f"Error: Dataset not found at {raw_queries}")
@@ -1387,7 +1387,7 @@ def main():
                 else:
                     raw_items = json.load(f)
             
-            if args.limit:
+            if args.limit & args.limit <= len(raw_items):
                 raw_items = raw_items[:args.limit]
             
             print(f"  Loaded: {len(raw_items)} queries")
