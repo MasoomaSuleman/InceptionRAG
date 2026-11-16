@@ -245,10 +245,10 @@ class TwoStageRetriever:
             if doc.get("query_id") is not None:
                 doc_dict["query_id"] = doc.get("query_id")
                 doc_dict["doc_type"] = doc.get("doc_type")
-            return 
+            return doc_dict
         return {"title": None, "chunk": None, "text": doc}
     
-    def retrieve(self, question: str, poisoned_texts: List[str] = None) -> Tuple[List[str], int, List[dict], List[dict], List[dict]]:
+    def retrieve(self, question: str, poisoned: List[dict] = None) -> Tuple[List[str], int, List[dict], List[dict], List[dict]]:
         """
         Two-stage retrieval:
         Stage 1: Retrieve first_k from corpus
@@ -266,10 +266,11 @@ class TwoStageRetriever:
         candidate_scores = corpus_scores[top_indices]
 
         # Stage 2
-        if not self.config.chunking and poisoned_texts:
+        if not self.config.chunking and poisoned:
+            poisoned_texts = [r["text"] for r in poisoned]
             poisoned_embs = np.array([self.encode(t) for t in poisoned_texts])
             candidate_texts += list(poisoned_texts)
-            candidate_records += [self._as_record(t) for t in poisoned_texts]
+            candidate_records += [self._as_record(t) for t in poisoned]
             candidate_scores = np.concatenate([candidate_scores, poisoned_embs @ query_emb])
 
         # pre-rerank top-k: what the retriever alone selects (by embedding score)
@@ -396,6 +397,7 @@ class InceptionRAGAttacker:
     ) -> List[str]:
         """Build poisoned documents with noise injection and dual-ended injection"""
         ad = item.get("ad_text") or {}
+        qid = item.get("id", "")
         text1 = ad.get("attribute_document") or ad.get("text1") or ""
         text2 = ad.get("bridge_document") or ad.get("text2") or ""
         
@@ -411,7 +413,25 @@ class InceptionRAGAttacker:
         text1 = inject_dual_ended(text1, question, self.config)
         text2 = inject_dual_ended(text2, question, self.config)
         
-        return [t for t in [text1, text2] if t]
+        doc_type = "attribute"
+        attr_dict = {
+            "id": f"adv-{qid}-{doc_type}", 
+            "query_id": qid,
+            "doc_type": doc_type,
+            "title": f"adv-{qid}-{doc_type}", 
+            "text": text1
+        }
+        
+        doc_type = "bridge"
+        bridge_dict = {
+            "id": f"adv-{qid}-{doc_type}", 
+            "query_id": qid,
+            "doc_type": doc_type,
+            "title": f"adv-{qid}-{doc_type}", 
+            "text": text2
+        }
+        
+        return [t for t in [attr_dict, bridge_dict] if t]
     
     def _call_llm(self, question: str, context: List[str]) -> str:
         """Call LLM for answer generation (aligned with main_attack.py)"""
@@ -1450,7 +1470,7 @@ def main():
         if not args.corpus_embs:
             args.corpus_embs = str(DATA_ROOT / f"corpus/{ds}_contriever_embs.npy")
         if not args.corpus_texts:
-            args.corpus_texts = str(DATA_ROOT / f"corpus/{ds}_corpus_texts.json")
+            args.corpus_texts = str(DATA_ROOT / f"corpus/{ds}_corpus_texts.jsonl")
         
         print(f"[Auto] Dataset: {ds}, Model: {model_folder}")
     
