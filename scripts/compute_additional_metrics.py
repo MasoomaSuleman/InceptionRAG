@@ -75,16 +75,17 @@ def load_corpus(path: str) -> Tuple[Dict[str, List[Dict[str, Any]]], Dict[str, S
 # ============================================================================
 
 
-def get_query_adv_passages(qid: str, adv_docs: Sequence[Dict]) -> Optional[List[Tuple[str, str, str]]]:
-    """Return [(label, title, text), ...] for the query's adversarial passages."""
-    query_adv_dict = next(
+def get_ad_entry(qid: str, adv_docs: Sequence[Dict]) -> Optional[Dict[str, Any]]:
+    """Find the ad-file entry whose "id" matches the query id."""
+    return next(
         (d for d in adv_docs if isinstance(d, dict) and str(d.get("id")) == str(qid)),
         None,
     )
-    if not query_adv_dict:
-        return None
 
-    adv_text = query_adv_dict.get("ad_text")
+
+def get_query_adv_passages(qid: str, ad_entry: Dict[str, Any]) -> Optional[List[Tuple[str, str, str]]]:
+    """Return [(label, title, text), ...] for the query's adversarial passages (chunker mode)."""
+    adv_text = ad_entry.get("ad_text")
     if not isinstance(adv_text, dict) or not adv_text:
         return None
 
@@ -116,6 +117,16 @@ def get_titles_chunk_pairs(entries: Sequence) -> Set[Pair]:
     return pairs
 
 
+def config_flag(settings: Dict[str, Any], key: str) -> bool:
+    """Read a required true/false setting from config_yaml.attack_changes."""
+    if key not in settings:
+        raise ValueError(f'Output file is missing config_yaml.attack_changes.{key}')
+    value = settings[key]
+    if isinstance(value, str):
+        return value.strip().lower() in ("true", "1", "yes", "on")
+    return bool(value)
+
+
 # ============================================================================
 # Pipeline stages
 # ============================================================================
@@ -124,11 +135,13 @@ def get_titles_chunk_pairs(entries: Sequence) -> Set[Pair]:
 def build_stage_plan(reranker_enabled: bool) -> List[Tuple[str, str]]:
     """Ordered (stage name, context key) pairs for this pipeline.
 
-    Chunker, no reranker:
+    The plan is the same with or without the chunker.
+
+    No reranker:
         first_k_retrieval <- retrieval_first_k_context
         llm_context       <- retrieval_top_k_context      (top-k goes straight to the LLM)
 
-    Chunker + reranker:
+    With reranker:
         first_k_retrieval <- retrieval_first_k_context
         top_k_retrieval   <- retrieval_top_k_context
         llm_context       <- reranker_top_k_context       (reranker output goes to the LLM)
@@ -205,24 +218,93 @@ def build_query_summary(
     }
 
 
+def has_adv_doc(context: Sequence, doc_type: str, qid: str) -> bool:
+    """True if the context holds this query's whole attribute/bridge document."""
+    return any(
+        isinstance(entry, dict)
+        and str(entry.get("doc_type", "")).lower() == doc_type
+        and entry.get("query_id") is not None
+        and str(entry["query_id"]) == qid
+        for entry in context
+    )
+
+
+def count_golden_passages(context: Sequence, qid: str) -> int:
+    """Number of distinct passages in the context whose "query_ids" list contains this query."""
+    found: Set[str] = set()
+    for index, entry in enumerate(context):
+        if not isinstance(entry, dict):
+            continue
+        query_ids = entry.get("query_ids")
+        if not isinstance(query_ids, list) or qid not in {str(q) for q in query_ids}:
+            continue
+        title = entry.get("title")
+        found.add(str(title) if title is not None else f"#{index}")
+    return len(found)
+
+
+def build_query_summary_no_chunker(
+    qid: str,
+    ad_entry: Dict[str, Any],
+    result: Dict,
+    stage_plan: Sequence[Tuple[str, str]],
+) -> Dict[str, Any]:
+    """No chunker: every passage is stored whole, so only the output file contexts are needed.
+
+    - attribute / bridge: always 1 chunk each; retained if the context holds an entry with the
+      matching doc_type and query_id == this query's id.
+    - golden: total is the number of ids in the ad-file entry's "corpus_ids" list; retained is the
+      number of passages in the context whose "query_ids" list contains this query's id.
+    """
+    qid = str(qid)
+    corpus_ids = ad_entry.get("corpus_ids")
+    golden_total = len({str(c) for c in corpus_ids}) if isinstance(corpus_ids, list) else 0
+
+    totals = {"attribute": 1, "bridge": 1, "golden": golden_total}
+    retained: Dict[str, Dict[str, int]] = {}
+    for stage, key in stage_plan:
+        context = get_context(result, key)
+        retained[stage] = {
+            "attribute": int(has_adv_doc(context, "attribute", qid)),
+            "bridge": int(has_adv_doc(context, "bridge", qid)),
+            "golden": count_golden_passages(context, qid),
+        }
+
+    return {
+        "question": result.get("question", ""),
+        "totals": totals,
+        "retained": retained,
+    }
+
+
 # ============================================================================
 # Main computation
 # ============================================================================
 
 
-def compute_metrics(adv_path: str, corpus_path: str, results_path: str) -> Dict[str, Any]:
+def compute_metrics(
+    adv_path: str,
+    corpus_path: Optional[str],
+    results_path: str,
+) -> Dict[str, Any]:
     adv_docs = load_adv_docs(adv_path)
-    corpus, golden_by_query = load_corpus(corpus_path)
     output = load_json(results_path)
 
     output_dict = output if isinstance(output, dict) else {}
     results = [r for r in output_dict.get("results", []) if isinstance(r, dict)]
 
-    config = output_dict.get("config_yaml") or {}
-    attack_changes = config.get("attack_changes") or {}
-    reranker_enabled = bool(attack_changes.get("reranker"))
-    if not reranker_enabled and any(r.get(RERANKER_KEY) is not None for r in results):
-        reranker_enabled = True
+    # Pipeline switches come only from config_yaml.attack_changes ("chunk" and "reranker").
+    attack_changes = (output_dict.get("config_yaml") or {}).get("attack_changes") or {}
+    chunker_enabled = config_flag(attack_changes, "chunk")
+    reranker_enabled = config_flag(attack_changes, "reranker")
+
+    # The corpus is only needed when passages were chunked.
+    corpus: Dict[str, List[Dict[str, Any]]] = {}
+    golden_by_query: Dict[str, Set[Pair]] = {}
+    if chunker_enabled:
+        if not corpus_path:
+            raise ValueError("--corpus-file is required when the chunker is enabled")
+        corpus, golden_by_query = load_corpus(corpus_path)
 
     stage_plan = build_stage_plan(reranker_enabled)
     stage_sources = dict(stage_plan)
@@ -230,11 +312,17 @@ def compute_metrics(adv_path: str, corpus_path: str, results_path: str) -> Dict[
     rows: List[Dict[str, Any]] = []
     for result in results:
         qid = result.get("id", "")
-        passages = get_query_adv_passages(qid, adv_docs)
-        if passages is None:
+        ad_entry = get_ad_entry(qid, adv_docs)
+        if ad_entry is None:
             continue
 
-        row = build_query_summary(passages, golden_by_query.get(str(qid), set()), result, corpus, stage_plan)
+        if chunker_enabled:
+            passages = get_query_adv_passages(qid, ad_entry)
+            if passages is None:
+                continue
+            row = build_query_summary(passages, golden_by_query.get(str(qid), set()), result, corpus, stage_plan)
+        else:
+            row = build_query_summary_no_chunker(qid, ad_entry, result, stage_plan)
         row["query_id"] = qid
         rows.append(row)
 
@@ -269,7 +357,11 @@ def compute_metrics(adv_path: str, corpus_path: str, results_path: str) -> Dict[
 
     return {
         "meta": {
-            "pipeline": "chunker_with_reranker" if reranker_enabled else "chunker_without_reranker",
+            "pipeline": (
+                f"{'chunker' if chunker_enabled else 'no_chunker'}_"
+                f"{'with' if reranker_enabled else 'without'}_reranker"
+            ),
+            "chunker_enabled": chunker_enabled,
             "reranker_enabled": reranker_enabled,
             "stage_sources": stage_sources,
         },
@@ -285,9 +377,9 @@ def main() -> None:
         description="Compute adversarial and golden chunk-retention metrics from ad corpus and pipeline output."
     )
     parser.add_argument("--ad-file", "-ad-file", dest="ad_file", required=True,
-                        help="*_ad.json file with attribute_document and bridge_document")
-    parser.add_argument("--corpus-file", "-corpus-file", dest="corpus_file", required=True,
-                        help="chunked corpus JSON list with title/chunk/text records")
+                        help="*_ad.json file with ids, attribute_document/bridge_document and corpus_ids (golden passage ids)")
+    parser.add_argument("--corpus-file", "-corpus-file", dest="corpus_file", default=None,
+                        help="chunked corpus JSON list with title/chunk/text records (required only when the chunker is on)")
     parser.add_argument("--output-file", "-output-file", dest="output_file", required=True,
                         help="pipeline output JSON containing results")
     parser.add_argument("--save-to", dest="save_to", default=None,
