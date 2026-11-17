@@ -1402,15 +1402,31 @@ def main():
             for i, item in enumerate(raw_items):
                 question = item.get("question") or item.get("text", "")
                 target = item.get("incorrect answer") or item.get("target_answer", "")
+                metadata = item.get("metadata", {})
+                corpus_ids = item.get("corpus_ids", [])
+                ground_truth = (
+                    item.get("ground_truth")
+                    or item.get("answer")
+                    or metadata.get("answer")
+                    or item.get("answers")
+                    or metadata.get("answers")
+                )
                 
                 # If incorrect answer is missing, generate one with LLM
                 if not target and needs_incorrect_answer:
                     if i == 0:
                         print(f"\n  [Stage 1.2] Generating incorrect answers...")
                     
+                    prompt_prefix = f"Question: {question}"
+                    gen_prompt1 = "\n\nGenerate a plausible but INCORRECT answer to this question" 
+                    gen_prompt2 = ". It should be a realistic but WRONG alternative, not a refusal or a restatement of the true answer."
+                    output_prompt = "Just output the incorrect answer, nothing else."
+                    if ground_truth:
+                        prompt_prefix += f"; Ground Truth: {ground_truth}"
+                        gen_prompt1 += " that is clearly different from the ground truth answer given"
                     try:
                         resp = llm.chat(
-                            user_message=f"Question: {question}\n\nGenerate a plausible but INCORRECT answer to this question. Just output the incorrect answer, nothing else.",
+                            user_message=f"{prompt_prefix}{gen_prompt1}{gen_prompt2} {output_prompt}",
                             system_message="You are a helpful assistant that generates plausible but incorrect answers for testing purposes.",
                             temperature=0.7,
                             max_tokens=50,
@@ -1421,24 +1437,17 @@ def main():
                         target = "Unknown"
                         print(f"    [{i+1}] Error: {e}")
                 
-                gen_items.append({
+                gen_dict = {
                     "id": item.get("id") or item.get("_id", ""),
                     "question": question,
                     "target_answer": target,
-                })
+                    "corpus_ids": corpus_ids,
+                }
 
                 if args.add_gt:
-                    metadata = item.get("metadata") or {}
-
-                    ground_truth = (
-                        item.get("ground_truth")
-                        or item.get("answer")
-                        or metadata.get("answer")
-                        or item.get("answers")
-                        or metadata.get("answers")
-                    )
-
-                    gen_items[-1]["ground_truth"] = ground_truth
+                    gen_dict["ground_truth"] = ground_truth
+                    
+                gen_items.append(gen_dict)
         
         if not args.zoso_only:
             print(f"\n  [Stage 1.3] Generating Logic Traps (Attribute + Bridge Documents)...")

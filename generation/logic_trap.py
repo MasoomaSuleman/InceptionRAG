@@ -529,6 +529,8 @@ class LogicTrapGenerator:
             result["target_answer"] = target
             if "ground_truth" in item:
                 result["ground_truth"] = item.get("ground_truth")
+            if "corpus_ids" in item:
+                result["corpus_ids"] = item.get("corpus_ids")
             results.append(result)
             
             # Checkpoint save

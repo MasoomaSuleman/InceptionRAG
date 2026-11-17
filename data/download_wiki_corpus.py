@@ -11,7 +11,7 @@ import argparse
 from collections import defaultdict
 from typing import Dict, Iterable, List, Set, Tuple
 
-DATASETS = ["nq", "hotpotqa", "msmarco"]
+DATASETS = ["nq", "hotpotqa"]
 
 def download(url: str, outfile: Path):
     """Download a file with a progress bar."""
@@ -47,26 +47,29 @@ def download(url: str, outfile: Path):
             if chunk:
                 f.write(chunk)
                 pbar.update(len(chunk))
-
-
+                
+                
 def load_queries(path: Path) -> List[Dict[str, str]]:
-    """Load query records from a JSON file.
+    records = []
 
-    Expected entries may have fields like: {"id": "abc", "question": "..."}
-    or {"query_id": "abc", "question": "..."}.
-    """
-    with open(path, "r") as f:
-        data = json.load(f)
+    with open(path, "r", encoding="utf-8") as f:
+        if path.suffix == ".jsonl":
+            items = (json.loads(line) for line in f if line.strip())
+        else:
+            items = json.load(f)
 
-    records: List[Dict[str, str]] = []
-    for item in data:
-        qid = item.get("id") or item.get("query_id") or item.get("_id")
-        question = item.get("question") or item.get("query") or item.get("text")
-        if qid is not None and question is not None:
-            records.append({
-                "id": str(qid).strip(),
-                "question": str(question).strip(),
-            })
+        for item in items:
+            qid = item.get("id") or item.get("query_id") or item.get("_id")
+            question = item.get("question") or item.get("query") or item.get("text")
+            metadata = item.get("metadata", "")
+
+            if qid is not None and question is not None:
+                records.append({
+                    "id": str(qid).strip(),
+                    "question": str(question).strip(),
+                    "metadata": metadata
+                })
+
     return records
 
 
@@ -356,8 +359,6 @@ def main():
     dataset_path.mkdir(parents=True, exist_ok=True)
     custom_corpus_path.mkdir(parents=True, exist_ok=True)
 
-    if args.dataset == "msmarco" or args.all:
-        download_msmarco(root)
     if args.dataset == "hotpotqa" or args.all:
         download_nq_hotpot(root, args.dataset)
     if args.dataset == "nq" or args.all:
