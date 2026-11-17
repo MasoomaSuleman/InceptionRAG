@@ -11,12 +11,14 @@ Usage:
 """
 
 import os
+import csv
 import json
 import logging
 import argparse
 import numpy as np
 from pathlib import Path
-from typing import List, Dict, Tuple
+from collections import defaultdict
+from typing import List, Dict, Tuple, Iterable
 
 # BEIR download URL
 BEIR_URL = "https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/{}.zip"
@@ -64,9 +66,62 @@ def load_beir_dataset(data_path: Path, split: str = "test") -> Tuple[Dict, Dict,
     return corpus, queries, qrels
 
 
+def load_qrels_by_corpus(qrels_paths: Iterable[Path]) -> Dict[str, List[str]]:
+    """Build query_id -> list of corpus_ids using train/dev/test qrels files.
+
+    BEIR qrels are often plain TSV files with no header and the layout:
+        query-id    corpus-id    score
+    but some files may include a header row. This parser supports both.
+    """
+    query_ids_by_corpus: Dict[str, Set[str]] = defaultdict(set)
+
+    for qrels_path in qrels_paths:
+        qrels_path = Path(qrels_path)
+        if not qrels_path.exists():
+            continue
+
+        with open(qrels_path, "r") as f:
+            reader = csv.reader(f, delimiter='\t')
+            rows = [row for row in reader if row and any(cell.strip() for cell in row)]
+
+        if not rows:
+            continue
+
+        # Skip a header row when present.
+        header = [cell.strip().lower() for cell in rows[0]]
+        if any(h in {"query-id", "query_id", "queryid", "qid", "query id"} for h in header):
+            rows = rows[1:]
+
+        for row in rows:
+            if len(row) < 2:
+                continue
+
+            qid = str(row[0]).strip()
+            corpus_id = str(row[1]).strip()
+            if not qid or not corpus_id:
+                continue
+            query_ids_by_corpus[corpus_id].add(qid)
+
+    return {
+        corpus_id: sorted(query_ids)
+        for corpus_id, query_ids in query_ids_by_corpus.items()
+    }
+
+
+def load_corpus(filename):
+    docs = {}
+
+    with open(filename, "r", encoding="utf-8") as f:
+        for line in f:
+            obj = json.loads(line)
+            docs[obj["_id"]] = obj
+
+    return docs
+
+
 def encode_corpus_contriever(
     corpus: Dict,
-    output_dir: Path,
+    base_dir: Path,
     dataset_name: str,
     batch_size: int = 64,
     max_docs: int = None,
@@ -87,6 +142,7 @@ def encode_corpus_contriever(
     import torch
     from transformers import AutoTokenizer, AutoModel
     
+    output_dir = base_dir / "corpus"
     output_dir.mkdir(parents=True, exist_ok=True)
     emb_path = output_dir / f"{dataset_name}_contriever_embs.npy"
     text_path = output_dir / f"{dataset_name}_corpus_texts.jsonl"
@@ -112,11 +168,22 @@ def encode_corpus_contriever(
     if max_docs:
         corpus_ids = corpus_ids[:max_docs]
     
+    qrels_dir = base_dir / f"datasets/{dataset_name}/qrels"
+    qrels_paths = [
+        qrels_dir / "train.tsv",
+        qrels_dir / "dev.tsv",
+        qrels_dir / "test.tsv",
+    ]
+    corpus_query_mapping = load_qrels_by_corpus(qrels_paths)
     texts = []
+    
     for cid in corpus_ids:
         doc = corpus[cid]
         text = doc.get("title", "") + " " + doc.get("text", "")
         text_dict = {"title": doc.get("title", ""), "chunk": None, "text": text.strip()}
+        if cid in corpus_query_mapping:
+            query_ids = corpus_query_mapping[cid]
+            text_dict["query_ids"] = query_ids
         texts.append(text_dict)
     
     if not emb_path.exists():
@@ -191,8 +258,8 @@ def prepare_dataset(
     
     # Encode corpus
     if encode:
-        corpus_dir = base_dir / "corpus"
-        encode_corpus_contriever(corpus, corpus_dir, dataset, max_docs=max_corpus_docs)
+        
+        encode_corpus_contriever(corpus, base_dir, dataset, max_docs=max_corpus_docs)
     
     # Save queries sample
     samples_dir = base_dir / "samples"
