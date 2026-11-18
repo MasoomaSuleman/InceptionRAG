@@ -19,6 +19,7 @@ if __package__ in (None, ""):
     __package__ = "InceptionRAG"
 
 from .llm_client import LLMConfig, LLMClient, create_llm_client
+from .compute_additional_metrics import compute_metrics
 
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -1162,8 +1163,44 @@ class AdvCorpusPipeline:
         paths = self.save_chunk_embeds(chunks, embeddings)
         print(f"Save custom corpus to {paths[0]} and {paths[1]}")
         return paths
+        
 
+# ============================================================================
+# Metrics
+# ============================================================================
 
+def query_metrics_by_query_id(query_level_metrics: List):
+    query_metrics_mapping = {}
+    for item in query_level_metrics:
+        qid = item.get("query_id", "")
+        query_metrics_mapping[qid] = item
+        
+    return query_metrics_mapping
+
+def add_metrics(ad_file: str, corpus_file: str, output_file: str):
+    with open(output_file, "r", encoding="utf-8") as f:
+        output = json.load(f)
+        
+    metrics = compute_metrics(ad_file, corpus_file, output_file)
+    query_metrics_mapping = query_metrics_by_query_id(metrics.get("queries", []))
+    
+    overall_metrics = metrics.get("overall", {})
+    
+    for res in output.get("results", []):
+        qid = res.get("id", "")
+        query_metrics = query_metrics_mapping[qid]
+        res["chunk_retention"] = query_metrics.get("chunk_retention", {})
+        
+    new_output = {
+        "config": output.get("config", {}),
+        "config_yaml": output.get("config_yaml", {}),
+        "stats": output.get("stats", {}),
+        "overall_chunk_retention": overall_metrics.get("chunk_retention", {}),
+        "results": output.get("results", [])
+    }
+        
+    with open(output_file, "w", encoding="utf-8") as f:
+        json.dump(new_output, f, indent=2, ensure_ascii=False)
 
 
 # ============================================================================
@@ -1677,6 +1714,8 @@ def main():
     output_path.parent.mkdir(parents=True, exist_ok=True)
     
     results = attacker.attack_batch(all_data, output_path)
+    
+    add_metrics(args.data, args.corpus_texts, output_path)
 
     llm_judge_success = sum(
         1 for r in results
