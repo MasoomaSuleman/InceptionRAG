@@ -115,7 +115,7 @@ def annotate_queries_with_corpus_ids(
     root, dataset
 ) -> List[Dict[str, str]]:
     """Attach qrels-derived corpus_ids to each query record for debugging."""
-    queries_file = root / f"samples/{dataset}_queries_100.json"
+    queries_file = root / f"datasets/{dataset}/queries.jsonl"
     qrels_dir = root / f"datasets/{dataset}/qrels"
     queries = load_queries(queries_file)
     
