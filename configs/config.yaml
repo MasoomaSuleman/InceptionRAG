@@ -22,7 +22,7 @@ attack:
   dual_injection: true
   
 attack_changes:
-  chunk: false
+  chunk: true
   chunking_strategy: "word-based"
   chunk_size: 100
   chunk_overlap: 12
