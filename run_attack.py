@@ -272,7 +272,9 @@ class TwoStageRetriever:
             poisoned_embs = np.array([self.encode(t) for t in poisoned_texts])
             candidate_texts += list(poisoned_texts)
             candidate_records += [self._as_record(t) for t in poisoned]
-            candidate_scores = np.concatenate([candidate_scores, poisoned_embs @ query_emb])
+            
+        candidate_embs = np.array([self.encode(t) for t in candidate_texts])
+        candidate_scores = candidate_embs @ query_emb
 
         # pre-rerank top-k: what the retriever alone selects (by embedding score)
         top_k_indices = np.argsort(candidate_scores)[::-1][:self.config.retrieval_top_k]
@@ -432,7 +434,7 @@ class InceptionRAGAttacker:
             "text": text2
         }
         
-        return [t for t in [attr_dict, bridge_dict] if t]
+        return [t for t in [attr_dict, bridge_dict] if t["text"]]
     
     def _call_llm(self, question: str, context: List[str]) -> str:
         """Call LLM for answer generation (aligned with main_attack.py)"""
@@ -529,14 +531,15 @@ class InceptionRAGAttacker:
         
             # Skip retrieval: use poisoned docs directly (higher ASR)
             if self.config.skip_retrieval:
-                context = poisoned
+                context = [d["text"] for d in poisoned]
             else:
                 context, adv_count, retrival_first_k_context, final_context, top_k_context  = self.retriever.retrieve(question, poisoned)
 
         else:
             context, _, retrival_first_k_context, final_context, top_k_context  = self.retriever.retrieve(question)
 
-        #random.shuffle(context)
+        if not self.config.reranker:
+            random.shuffle(context)
         
         try:
             # Apply HODOR defense if enabled
