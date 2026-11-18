@@ -1193,12 +1193,16 @@ def add_metrics(ad_file: str, corpus_file: str, output_file: str):
         qid = res.get("id", "")
         query_metrics = query_metrics_mapping[qid]
         res["chunk_retention"] = query_metrics.get("chunk_retention", {})
-        
+        res["LLM_as_judge_additional_metrics"] = query_metrics.get(
+            "LLM_as_judge_additional_metrics"
+        )
+
     new_output = {
         "config": output.get("config", {}),
         "config_yaml": output.get("config_yaml", {}),
         "stats": output.get("stats", {}),
         "overall_chunk_retention": overall_metrics.get("chunk_retention", {}),
+        "LLM_as_judge_additional_metrics": overall_metrics.get("llm_judge", {}),
         "results": output.get("results", [])
     }
         
