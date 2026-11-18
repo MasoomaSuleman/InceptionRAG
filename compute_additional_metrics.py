@@ -596,7 +596,22 @@ def compute_metrics(
     verdict_by_id: Dict[str, Optional[bool]] = {}
     llm_judge_summary: Optional[Dict[str, Any]] = None
     if use_llm_judge:
-        client = judge_client or LLMJudgeClient((output_dict.get("config_yaml") or {}).get("llm") or {})
+        if not judge_client:
+            config_data = output_dict.get("config_yaml", {})
+            llm_config = config_data.get("llm", {})
+            llm_judge_config = LLMConfig(
+                provider=llm_config.get("provider", "openai"),
+                api_key=llm_config.get("api_key", ""),
+                api_base=llm_config.get("api_base", ""),
+                api_version=llm_config.get("api_version", ""),
+                deployment=llm_config.get("deployment", ""),
+                model=llm_config.get("llm_judge_model", "gpt-4o-mini"),
+            )
+            
+            cllient = create_lllllllm_client(llm_judge_config)
+        else:
+            client = judge_client
+            
         verdict_by_id, llm_judge_summary = run_llm_judge(client, results)
 
     rows: List[Dict[str, Any]] = []
