@@ -1021,9 +1021,11 @@ def main():
         api_base=args.api_base if args.provider != "hf" else "",
         model=args.model,
     )
+    
+    llm_client = create_llm_client(llm_config)
 
     config = ZOSOConfig(
-        llm_config=llm_config,
+        llm_client=llm_client,
         anchor_rounds=args.anchor_rounds,
         bridge_rounds=args.bridge_rounds,
         init_exploration=args.init_exploration,
@@ -1063,7 +1065,7 @@ def main():
     data_mgr = DataManager(
         all_data,
         config,
-        llm_config,
+        client,
     )
     
     # Optimize
@@ -1071,7 +1073,7 @@ def main():
         config, pool, data_mgr,
         corpus_embs, corpus_texts,
         contriever, contriever_tokenizer,
-        llm_config
+        client
     )
     results = optimizer.optimize()
     
