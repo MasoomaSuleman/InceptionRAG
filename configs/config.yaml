@@ -12,11 +12,11 @@ llm:
   api_key: "EMPTY"
   api_base: "http://localhost:8000/v1"
   model: "Qwen/Qwen2.5-3B-Instruct" #"zai-org/GLM-5.3"
-  llm_judge_model: "Qwen/Qwen2.5-3B-Instruct"
+  llm_judge_model: "Qwen/Qwen2.5-7B-Instruct"
 
 attack: 
   retrieval_top_k: 20
-  retrieval_first_k: 20
+  retrieval_first_k: 50
   cttft_neighbor_k: 10
   noise_injection: true
   dual_injection: true

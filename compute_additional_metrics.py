@@ -429,7 +429,6 @@ def judge_result(client: Any, result: Dict[str, Any], print_prompt: bool = True)
         str(result.get("question") or ""),
         answer,
         target,
-        format_ground_truth(result.get("ground_truth")),
     )
     if print_prompt:
         tqdm.write(f"\n{'=' * 70}\n[llm-judge] query {qid}\n{'=' * 70}\n{prompt}\n{'=' * 70}")
