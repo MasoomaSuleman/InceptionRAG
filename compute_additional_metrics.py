@@ -9,6 +9,8 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
+from tqdm import tqdm
+
 
 Pair = Tuple[str, str]  # (title, chunk id)
 
@@ -458,15 +460,29 @@ def run_llm_judge(
     verdicts: List[Optional[bool]] = []
     verdict_by_id: Dict[str, Optional[bool]] = {}
 
-    for result in results:
+    success_count = 0
+    failed_count = 0
+    progress = tqdm(results, desc="LLM judging", unit="query", dynamic_ncols=True)
+
+    for result in progress:
         qid = str(result.get("id", ""))
         try:
             verdict: Optional[bool] = judge_result(client, result)
         except Exception as exc:  # keep going; the query is counted as failed
-            print(f"[llm-judge] query {qid} failed: {exc}", file=sys.stderr)
+            failed_count += 1
+            print(f"\n[llm-judge] query {qid} failed: {exc}", file=sys.stderr)
             verdict = None
+        else:
+            if verdict:
+                success_count += 1
+
         verdicts.append(verdict)
         verdict_by_id[qid] = verdict
+
+        progress.set_postfix({
+            "success": success_count,
+            "failed": failed_count,
+        })
 
     judged = [v for v in verdicts if v is not None]
     successes = sum(1 for v in judged if v)
