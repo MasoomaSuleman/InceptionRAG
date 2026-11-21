@@ -9,6 +9,7 @@ import csv
 import xml.etree.ElementTree as ET
 import argparse
 from collections import defaultdict
+from itertools import islice
 from typing import Dict, Iterable, List, Set, Tuple
 
 DATASETS = ["nq", "hotpotqa"]
@@ -55,8 +56,9 @@ def load_queries(path: Path) -> List[Dict[str, str]]:
     with open(path, "r", encoding="utf-8") as f:
         if path.suffix == ".jsonl":
             items = (json.loads(line) for line in f if line.strip())
+            items = islice(items, 1000)
         else:
-            items = json.load(f)
+            items = json.load(f)[:1000]
 
         for item in items:
             qid = item.get("id") or item.get("query_id") or item.get("_id")

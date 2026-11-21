@@ -23,6 +23,7 @@ CATEGORIES = ("attribute", "bridge", "golden")
 FIRST_K_KEY = "retrieval_first_k_context"
 TOP_K_KEY = "retrieval_top_k_context"
 RERANKER_KEY = "reranker_top_k_context"
+TRUSTRAG_CONTEXT_KEY = "trustrag_context"
 
 
 def chunk_key(value: Any) -> str:
@@ -205,8 +206,15 @@ def build_query_summary(
     result: Dict,
     corpus: Dict[str, List[Dict[str, Any]]],
     stage_plan: Sequence[Tuple[str, str]],
+    use_trustrag: bool = False,
 ) -> Dict[str, Any]:
-    stage_contexts = {name: get_context(result, key) for name, key in stage_plan}
+    stage_contexts = {}
+
+    for name, key in stage_plan:
+        if name == "llm_context" and use_trustrag:
+            stage_contexts[name] = get_context(result, TRUSTRAG_CONTEXT_KEY)
+        else:
+            stage_contexts[name] = get_context(result, key)
     stage_pairs = {name: get_titles_chunk_pairs(ctx) for name, ctx in stage_contexts.items()}
 
     # All chunks that exist in the corpus for each category of this query.
@@ -269,11 +277,220 @@ def count_golden_passages(context: Sequence, qid: str) -> int:
     return len(found)
 
 
+# ============================================================================
+# TrustRAG rejection metrics
+# ============================================================================
+
+def get_rejection_stage(entry: Dict[str, Any]) -> str:
+    """
+    Extract the stage responsible for rejecting a document.
+
+    Expected metadata: rejected_stage = 'stage1' or 'stage2'.
+    Additional common field names are supported.
+    """
+    value = entry.get("stage")
+
+    if value is None:
+        return "unknown"
+
+    value = str(value).lower().replace("_", "").replace(" ", "")
+
+    if value in ("stage1", "1"):
+        return "stage1"
+
+    if value in ("stage2", "2"):
+        return "stage2"
+    
+    raise ValueError(
+        f"Cannot identify TrustRAG rejection stage for document: "
+        f"{entry.get('title')}"
+    )
+
+
+def classify_rejected_document(
+    entry: Dict[str, Any],
+    qid: str,
+) -> str:
+    """Classify a rejected document into attribute, bridge, golden or benign."""
+
+    title = str(entry.get("title") or "").lower()
+    doc_type = str(entry.get("doc_type") or "").lower()
+
+    # Adversarial attribute document
+    if (
+        doc_type == "attribute"
+        or title == f"adv-{qid}-attribute".lower()
+    ):
+        return "attribute"
+
+    # Adversarial bridge document
+    if (
+        doc_type == "bridge"
+        or title == f"adv-{qid}-bridge".lower()
+    ):
+        return "bridge"
+
+    # Golden passages: chunked and non-chunked representations
+    if is_golden_chunk_of(entry, qid):
+        return "golden"
+
+    query_ids = entry.get("query_ids")
+    if isinstance(query_ids, list) and qid in {
+        str(value) for value in query_ids
+    }:
+        return "golden"
+
+    # Anything else is considered benign
+    return "benign"
+
+
+def rejected_item_identity(
+    entry: Dict[str, Any],
+) -> Tuple[str, str]:
+    """Create a stable identity for deduplicating rejected items."""
+
+    title = next(
+        (
+            entry[k]
+            for k in ("title", "doc_id", "id")
+            if entry.get(k) is not None
+        ),
+        None,
+    )
+
+    if title is None:
+        title = json.dumps(entry, sort_keys=True, default=str)
+
+    return (
+        str(title),
+        chunk_key(entry.get("chunk")),
+    )
+
+
+def build_rejection_block(
+    rejected_entries: Sequence[Dict[str, Any]],
+    qid: str,
+) -> Dict[str, Any]:
+    """
+    Calculate unique rejected documents/chunks and category counts.
+
+    A chunk is identified by (title, chunk).
+    A source document is identified by title.
+    """
+
+    categories = {
+        "attribute": set(),
+        "bridge": set(),
+        "golden": set(),
+        "benign": set(),
+    }
+
+    for entry in rejected_entries:
+        if not isinstance(entry, dict):
+            continue
+
+        category = classify_rejected_document(entry, qid)
+        identity = rejected_item_identity(entry)
+
+        categories[category].add(identity)
+
+    result = {}
+
+    for category, identities in categories.items():
+        result[f"rejected_{category}_chunks"] = len(identities)
+
+        result[f"rejected_{category}_documents"] = len({
+            title for title, _chunk in identities
+        })
+
+    # Attribute + bridge combined
+    adversarial = categories["attribute"] | categories["bridge"]
+
+    result["rejected_adversarial_chunks"] = len(adversarial)
+    result["rejected_adversarial_documents"] = len({
+        title for title, _chunk in adversarial
+    })
+
+    # Explicit bridge and attribute metrics
+    result["rejected_bridge_chunks"] = len(categories["bridge"])
+    result["rejected_bridge_documents"] = len({
+        title for title, _chunk in categories["bridge"]
+    })
+
+    result["rejected_attribute_chunks"] = len(categories["attribute"])
+    result["rejected_attribute_documents"] = len({
+        title for title, _chunk in categories["attribute"]
+    })
+
+    result["rejected_golden_chunks"] = len(categories["golden"])
+    result["rejected_golden_documents"] = len({
+        title for title, _chunk in categories["golden"]
+    })
+
+    result["rejected_other_benign_chunks"] = len(categories["benign"])
+    result["rejected_other_benign_documents"] = len({
+        title for title, _chunk in categories["benign"]
+    })
+
+    return result
+
+
+def build_trustrag_rejection_metrics(
+    result: Dict[str, Any],
+    qid: str,
+) -> Dict[str, Any]:
+    """
+    Calculate TrustRAG Stage 1, Stage 2 and overall rejection metrics.
+
+    Overall counts use unique document/chunk identities, so an item
+    rejected by both stages is counted only once.
+    """
+
+    rejected_context = result.get("trustrag_rejected_context") or []
+
+    if not isinstance(rejected_context, list):
+        raise ValueError(
+            f"trustrag_rejected_context must be a list for query {qid}"
+        )
+
+    stage1_entries = []
+    stage2_entries = []
+
+    for entry in rejected_context:
+        if not isinstance(entry, dict):
+            continue
+
+        stage = get_rejection_stage(entry)
+
+        if stage == "stage1":
+            stage1_entries.append(entry)
+        elif stage == "stage2":
+            stage2_entries.append(entry)
+
+    # Overall unique rejection set
+    overall_entries = {}
+
+    for entry in stage1_entries + stage2_entries:
+        identity = rejected_item_identity(entry)
+        overall_entries[identity] = entry
+
+    return {
+        "stage1_rejections": build_rejection_block(
+            stage1_entries, qid
+        ),
+        "stage2_rejections": build_rejection_block(
+            stage2_entries, qid
+        ),
+        "overall_rejections": build_rejection_block(
+            list(overall_entries.values()), qid
+        ),
+    }
+
 def build_query_summary_no_chunker(
     qid: str,
     ad_entry: Dict[str, Any],
     result: Dict,
-    stage_plan: Sequence[Tuple[str, str]],
+    stage_plan: Sequence[Tuple[str, str]], use_trustrag: bool = False,
 ) -> Dict[str, Any]:
     """No chunker: every passage is stored whole, so only the output file contexts are needed.
 
@@ -289,7 +506,10 @@ def build_query_summary_no_chunker(
     totals = {"attribute": 1, "bridge": 1, "golden": golden_total}
     retained: Dict[str, Dict[str, int]] = {}
     for stage, key in stage_plan:
-        context = get_context(result, key)
+        if stage == "llm_context" and use_trustrag:
+            context = get_context(result, "trustrag_context")
+        else:
+            context = get_context(result, key)
         retained[stage] = {
             "attribute": int(has_adv_doc(context, "attribute", qid)),
             "bridge": int(has_adv_doc(context, "bridge", qid)),
@@ -432,7 +652,14 @@ def judge_result(client: Any, result: Dict[str, Any], print_prompt: bool = True)
     )
     if print_prompt:
         tqdm.write(f"\n{'=' * 70}\n[llm-judge] query {qid}\n{'=' * 70}\n{prompt}\n{'=' * 70}")
-    return parse_judge_bool(client.chat(JUDGE_SYSTEM_MESSAGE, prompt))
+    judge_text = client.chat(JUDGE_SYSTEM_MESSAGE, prompt)
+    verdict = parse_judge_bool(judge_text)
+
+    if print_prompt:
+        tqdm.write(f"[llm-judge] query {qid} output: {judge_text.strip()}")
+        tqdm.write(f"[llm-judge] query {qid} verdict: {verdict}")
+
+    return verdict
 
 
 def run_llm_judge(
@@ -504,6 +731,12 @@ def compute_metrics(
     chunker_enabled = config_flag(attack_changes, "chunk")
     reranker_enabled = config_flag(attack_changes, "reranker")
 
+    use_trustrag = (
+        config_flag(attack_changes, "use_trustrag")
+        if "use_trustrag" in attack_changes
+        else False
+    )
+
     # The corpus is only needed when passages were chunked.
     corpus: Dict[str, List[Dict[str, Any]]] = {}
     golden_by_query: Dict[str, Set[Pair]] = {}
@@ -549,10 +782,10 @@ def compute_metrics(
             if passages is None:
                 continue
             row = build_query_summary(
-                str(qid), passages, golden_by_query.get(str(qid), set()), result, corpus, stage_plan
+                str(qid), passages, golden_by_query.get(str(qid), set()), result, corpus, stage_plan, use_trustrag=use_trustrag,
             )
         else:
-            row = build_query_summary_no_chunker(qid, ad_entry, result, stage_plan)
+            row = build_query_summary_no_chunker(qid, ad_entry, result, stage_plan, use_trustrag=use_trustrag)
         row["query_id"] = qid
         rows.append(row)
 
@@ -569,6 +802,19 @@ def compute_metrics(
             **(
                 {"LLM_as_judge_additional_metrics": verdict_by_id.get(str(row["query_id"]))}
                 if use_llm_judge
+                else {}
+            ),
+            **(
+                {
+                    "trustrag_rejections": build_trustrag_rejection_metrics(
+                        next(
+                            r for r in results
+                            if str(r.get("id", "")) == str(row["query_id"])
+                        ),
+                        str(row["query_id"]),
+                    )
+                }
+                if use_trustrag
                 else {}
             ),
         })
@@ -590,7 +836,36 @@ def compute_metrics(
         for stage in stage_sources
     }
 
+    # ---- pooled TrustRAG rejection metrics ----------------------------
+
+    if use_trustrag:
+
+        rejection_levels = (
+            "stage1_rejections",
+            "stage2_rejections",
+            "overall_rejections",
+        )
+
+        pooled_rejections = {
+            level: defaultdict(int)
+            for level in rejection_levels
+        }
+
+        for query in query_level:
+            query_rejections = query["trustrag_rejections"]
+
+            for level in rejection_levels:
+                for metric, value in query_rejections[level].items():
+                    pooled_rejections[level][metric] += value
+
+        overall_trustrag_rejections = {
+            level: dict(pooled_rejections[level])
+            for level in rejection_levels
+        }
+
     overall: Dict[str, Any] = {"chunk_retention": overall_chunk_retention}
+    if use_trustrag:
+        overall["trustrag_rejections"] = overall_trustrag_rejections
     if llm_judge_summary is not None:
         overall["llm_judge"] = llm_judge_summary
 
@@ -603,6 +878,7 @@ def compute_metrics(
             "chunker_enabled": chunker_enabled,
             "reranker_enabled": reranker_enabled,
             "stage_sources": stage_sources,
+            "use_trustrag": use_trustrag,
         },
         "overall": overall,
         "queries": query_level,

@@ -21,6 +21,10 @@ if __package__ in (None, ""):
 from .llm_client import LLMConfig, LLMClient, create_llm_client
 from .compute_additional_metrics import compute_metrics
 
+from defense.trust_rag import TrustRAGDefense
+
+
+
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -58,6 +62,14 @@ class InceptionRAGConfig:
     # HODOR Defense (Heterogeneous Orthogonal Documents to Obstruct Reasoning)
     use_hodor: bool = False             # Enable HODOR defense
     hodor_model: str = "gemini-2.0-flash"  # Model for HODOR voting
+
+    # TrustRAG Defense
+    use_trustrag: bool = False
+    trustrag_stage1: bool = True
+    trustrag_stage2: bool = True
+    trustrag_embedding_model: str = "princeton-nlp/sup-simcse-bert-base-uncased"
+    trustrag_rouge_threshold: float = 0.25
+    trustrag_cohesion_threshold: float = 0.85
 
     llm_judge: bool = False
     llm_juddge_config: LLMConfig = field(default_factory=LLMConfig)
@@ -163,6 +175,7 @@ class PassageReranker:
         self.top_k = top_k
         self.cross_encoder = None
         self._init_model()
+        
 
     def _init_model(self):
         try:
@@ -350,6 +363,16 @@ class InceptionRAGAttacker:
         self.config_yaml = config_yaml
         self.pool = suffix_pool
         self.retriever = retriever
+        # Initialize TrustRAG only when enabled.
+        self.trustrag = (
+            TrustRAGDefense(
+                embedding_model=self.config.trustrag_embedding_model,
+                rouge_threshold=self.config.trustrag_rouge_threshold,
+                cohesion_threshold=self.config.trustrag_cohesion_threshold,
+            )
+            if self.config.use_trustrag
+            else None
+        )
         
         # Optimal suffixes from ZOSO
         self.global_anchor_idx = optimal_anchor_idx
@@ -506,12 +529,16 @@ class InceptionRAGAttacker:
         return final_answer
     
     def _try_attack(
-        self, 
-        item: dict, 
-        anchor: str, 
-        bridge: str, 
+        self,
+        item: dict,
+        anchor: str,
+        bridge: str,
         question: str
-    ) -> Tuple[bool, str, List[str], List[dict], List[dict],List[dict]]:
+    ) -> Tuple[
+        bool, str, List[str],
+        List[dict], List[dict], List[dict],
+        List[dict], List[dict], Dict
+    ]:
         """Single attack attempt"""
         
 
@@ -522,24 +549,71 @@ class InceptionRAGAttacker:
             if self.config.skip_retrieval:
                 context = [d["text"] for d in poisoned]
             else:
-                context, adv_count, retrival_first_k_context, final_context, top_k_context  = self.retriever.retrieve(question, poisoned)
+                context, adv_count, retrieval_first_k_context, final_context, top_k_context  = self.retriever.retrieve(question, poisoned)
 
         else:
-            context, _, retrival_first_k_context, final_context, top_k_context  = self.retriever.retrieve(question)
+            context, _, retrieval_first_k_context, final_context, top_k_context  = self.retriever.retrieve(question)
 
         if not self.config.reranker:
             random.shuffle(context)
-        
+
+        defense_input = final_context if self.config.reranker else top_k_context
+        # Defaults when TrustRAG is disabled.
+        defended_context = defense_input
+        rejected_context = []
+        trustrag_metadata = {}
         try:
             # Apply HODOR defense if enabled
             if self.config.use_hodor:
                 answer = self._apply_hodor(question, context)
+
             else:
+                if self.config.use_trustrag and self.trustrag is not None:
+                    defended_context, rejected_context, trustrag_metadata = (
+                        self.trustrag.apply(
+                            question=question,
+                            documents=defense_input,
+                            llm=self.llm,
+                            stage1=self.config.trustrag_stage1,
+                            stage2=self.config.trustrag_stage2
+                        )
+                    )
+
+                    # Convert document dictionaries into strings for LLM generation.
+                    context = [
+                        doc["text"]
+                        for doc in defended_context
+                        if doc.get("text")
+                    ]
+
                 answer = self._call_llm(question, context)
+
             success = self._check_success(answer, item)
-            return success, answer, context, retrival_first_k_context, final_context, top_k_context 
+
+            return (
+                success,
+                answer,
+                context,
+                retrieval_first_k_context,
+                final_context,
+                top_k_context,
+                defended_context,
+                rejected_context,
+                trustrag_metadata
+            )
+
         except Exception as e:
-            return False, str(e), context, retrival_first_k_context, final_context, top_k_context 
+            return (
+                False,
+                str(e),
+                context,
+                retrieval_first_k_context,
+                final_context,
+                top_k_context,
+                defended_context,
+                rejected_context,
+                trustrag_metadata
+            )
     
     def attack_single(self, item: dict) -> Dict:
         """
@@ -567,13 +641,17 @@ class InceptionRAGAttacker:
         
         # ========== L1: Global Probe ==========
         print(f"    [L1] Global...", end=" ", flush=True)
-        success, answer, context, retrieval_first_k_context, final_context, top_k_context = self._try_attack(item, self.global_anchor, self.global_bridge, question)
+        (success,answer,context,retrieval_first_k_context,final_context,top_k_context,defended_context,rejected_context,trustrag_metadata) = self._try_attack(item, self.global_anchor, self.global_bridge, question)
         result["queries"] += 1
         result["context"] = context
         result["retrieval_first_k_context"] = retrieval_first_k_context
         result["retrieval_top_k_context"] = top_k_context
         if self.config.reranker:
             result["reranker_top_k_context"] = final_context
+        if self.config.use_trustrag:
+            result["trustrag_context"] = defended_context
+            result["trustrag_rejected_context"] = rejected_context
+            result["trustrag_metadata"] = trustrag_metadata
         
         if success:
             print(f"✓")
@@ -592,14 +670,17 @@ class InceptionRAGAttacker:
             
             for i, a_idx in enumerate(self.anchor_neighbors):
                 test_anchor = self.pool.anchors[a_idx]
-                success, answer, context, retrieval_first_k_context, final_context, top_k_context  = self._try_attack(item, test_anchor, self.global_bridge, question)
+                (success,answer,context,retrieval_first_k_context,final_context,top_k_context,defended_context,rejected_context,trustrag_metadata) = self._try_attack(item, self.global_anchor, self.global_bridge, question)
                 result["queries"] += 1
                 result["context"] = context
                 result["retrieval_first_k_context"] = retrieval_first_k_context
                 result["retrieval_top_k_context"] = top_k_context
                 if self.config.reranker:
                     result["reranker_top_k_context"] = final_context
-                
+                if self.config.use_trustrag:
+                    result["trustrag_context"] = defended_context
+                    result["trustrag_rejected_context"] = rejected_context
+                    result["trustrag_metadata"] = trustrag_metadata
                 if success:
                     print(f"✓ [{i+1}]")
                     print(f"    Answer: {answer[:60]}..." if len(answer) > 60 else f"    Answer: {answer}")
@@ -616,14 +697,17 @@ class InceptionRAGAttacker:
             
             for i, b_idx in enumerate(self.bridge_neighbors):
                 test_bridge = self.pool.bridges[b_idx]
-                success, answer, context, retrieval_first_k_context, final_context, top_k_context  = self._try_attack(item, best_anchor, test_bridge, question)
+                (success,answer,context,retrieval_first_k_context,final_context,top_k_context,defended_context,rejected_context,trustrag_metadata) = self._try_attack(item, self.global_anchor, self.global_bridge, question)
                 result["queries"] += 1
                 result["context"] = context
                 result["retrieval_first_k_context"] = retrieval_first_k_context
                 result["retrieval_top_k_context"] = top_k_context
                 if self.config.reranker:
                     result["reranker_top_k_context"] = final_context
-                
+                if self.config.use_trustrag:
+                    result["trustrag_context"] = defended_context
+                    result["trustrag_rejected_context"] = rejected_context
+                    result["trustrag_metadata"] = trustrag_metadata
                 if success:
                     print(f"✓ [{i+1}]")
                     print(f"    Answer: {answer[:60]}..." if len(answer) > 60 else f"    Answer: {answer}")
@@ -903,7 +987,7 @@ class AdvCorpusPipeline:
             bridge_doc = str(adv.get("bridge_document") or adv.get("text2") or "").strip()
 
             noisy_anchor = inject_polymorphic_noise(anchor_suffix, cfg.noise_injection)
-            noisy_bridge = inject_polymorphic_noise(bridge_suffix, cfg.noise_injection)
+            noisy_bridge = inject_polymorphic_noise(bridgeSuffix, cfg.noise_injection)
 
             attribute_doc = f"{attribute_doc} {noisy_anchor}" if attribute_doc else ""
             bridge_doc = f"{bridge_doc} {noisy_bridge}" if bridge_doc else ""
@@ -1183,7 +1267,8 @@ def add_metrics(ad_file: str, corpus_file: str, output_file: str, llm_judge_clie
         query_metrics = query_metrics_mapping[qid]
         res["chunk_retention"] = query_metrics.get("chunk_retention", {})
         res["llm_judge_metrics"] = query_metrics.get("LLM_as_judge_additional_metrics", "")
-        
+        if "trustrag_rejections" in query_metrics:
+            res["trustrag_rejections"] = query_metrics["trustrag_rejections"]
     new_output = {
         "config": output.get("config", {}),
         "config_yaml": output.get("config_yaml", {}),
@@ -1293,6 +1378,9 @@ def main():
         dual_injection = attack_cfg.get("dual_injection", False)
 
         attack_changes_cfg = config_data.get("attack_changes", {})
+        use_trustrag = attack_changes_cfg.get("use_trustrag", False)
+        trustrag_stage1 = attack_changes_cfg.get("trustrag_stage1", True)
+        trustrag_stage2 = attack_changes_cfg.get("trustrag_stage2", True)
         chunk = attack_changes_cfg.get("chunk", False)
         chunking_strategy = attack_changes_cfg.get("chunking_strategy", "word-based")
         chunk_size = attack_changes_cfg.get("chunk_size", 256)
@@ -1321,7 +1409,10 @@ def main():
             chunk_overlap=chunk_overlap,
             reranker=use_reranker,
             reranker_model=reranker_model,
-            reranker_top_k=reranker_top_k
+            reranker_top_k=reranker_top_k,
+            use_trustrag=use_trustrag,
+            trustrag_stage1=trustrag_stage1,
+            trustrag_stage2=trustrag_stage2,
         )
     else:
         # Build from CLI args

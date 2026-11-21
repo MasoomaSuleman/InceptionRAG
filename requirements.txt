@@ -29,3 +29,7 @@ pyyaml
 httpx[socks]
 requests
 mwparserfromhell
+
+#trust rag
+rouge-score 
+scikit-learn 
