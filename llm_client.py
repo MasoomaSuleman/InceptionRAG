@@ -57,6 +57,7 @@ class LLMConfig:
     model: str = "gpt-4o-mini"
     temperature: float = 0.0
     max_tokens: int = 256
+    attn_implementation: str = ""
     
     @classmethod
     def from_yaml(cls, path: str) -> "LLMConfig":
@@ -65,6 +66,9 @@ class LLMConfig:
             data = yaml.safe_load(f)
         
         llm_config = data.get("llm", {})
+        defense_cfg = data.get("defenses", {})
+        avfilter_cfg = defense_cfg.get("avfilter", {})
+
         return cls(
             provider=llm_config.get("provider", "openai"),
             api_key=llm_config.get("api_key", ""),
@@ -72,6 +76,7 @@ class LLMConfig:
             api_version=llm_config.get("api_version", ""),
             deployment=llm_config.get("deployment", ""),
             model=llm_config.get("model", "gpt-4o-mini"),
+            attn_implementation=avfilter_cfg.get("attn_implementation", "")
         )
     
     @classmethod
@@ -84,6 +89,7 @@ class LLMConfig:
             api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-15-preview"),
             deployment=os.getenv("AZURE_OPENAI_DEPLOYMENT", ""),
             model=os.getenv("LLM_MODEL", "gpt-4o-mini"),
+
         )
 
 
@@ -157,11 +163,13 @@ class LLMClient:
             self._tokenizer.pad_token = self._tokenizer.eos_token
 
         device = "cuda" if torch.cuda.is_available() else "cpu"
-
+        extra = {"attn_implementation": self.config.attn_implementation} if self.config.attn_implementation else {}
+        
         if device == "cuda":
             self._model = AutoModelForCausalLM.from_pretrained(
                 model_name,
                 cache_dir=cache_dir,
+                **extra,
                 dtype=torch.bfloat16,
                 device_map="auto",
                 trust_remote_code=True,
@@ -172,6 +180,7 @@ class LLMClient:
                 cache_dir=cache_dir,
                 torch_dtype=torch.float32,
                 trust_remote_code=True,
+                **extra,
             )
             self._model = self._model.to(device)
 

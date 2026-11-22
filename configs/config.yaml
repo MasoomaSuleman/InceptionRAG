@@ -13,10 +13,14 @@ llm:
   api_base: "http://localhost:8000/v1"
   model: "Qwen/Qwen2.5-3B-Instruct" #"zai-org/GLM-5.3"
   llm_judge_model: "Qwen/Qwen2.5-7B-Instruct"
+  
+data:
+  dataset: "nq"
+  data_root: "/tmp/alegault/InceptionRAG_data"
 
 attack: 
   retrieval_top_k: 20
-  retrieval_first_k: 50
+  retrieval_first_k: 20
   cttft_neighbor_k: 10
   noise_injection: true
   dual_injection: true
@@ -29,4 +33,16 @@ attack_changes:
   reranker: false
   reranker_model: "cross-encoder/ms-marco-MiniLM-L-6-v2"
   reranker_top_k: 5
+
+defenses:
+  hodor:
+    use_hodor: False
+    hodor_model: "Qwen/Qwen2.5-3B-Instruct"
+  trustrag:
+    use_trustrag: False
+    stage1: True
+    stage2: True
+    embedding_model: "princeton-nlp/sup-simcse-bert-base-uncased"
+    rouge_threshold: 0.25
+    cohesion_threshold: 0.85
   

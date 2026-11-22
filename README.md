@@ -62,7 +62,7 @@ We start be establishing a baseline based on the original InceptionRAG
 1. Download a dataset used in InceptionRAG and encode them as embeddings. (NOTE: this step will take multiple hours to embedding millions of passages)
 - dataset options are "nq", "hotpotqa", and "msmarco"
 ```bash
-python data/download_datasets.py  nq/hotpotqa/msmarco --output-dir path/to/data_folder
+python data/download_datasets.py --dataset nq/hotpotqa/msmarco --output-dir path/to/data_folder
 ```
 
 2. Configure the `configs/config.yaml` file. This file will be used to obtain the LLM and set up the RAG pipeline configurations

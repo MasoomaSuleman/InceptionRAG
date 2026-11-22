@@ -266,15 +266,17 @@ def download_msmarco(root):
 
 
 def download_nq_hotpot(root, dataset):
-    url = "https://dumps.wikimedia.org/enwiki/latest/enwiki-latest-pages-articles-multistream.xml.bz2"
-    wiki_dump_path = root / "custom_corpus" / dataset / "enwiki-latest-pages-articles-multistream.xml.bz2s"
-    download(url, wiki_dump_path)
+    
     
     golden_passages(root, dataset)
 
     output_path = root / "custom_corpus" / dataset / "wiki_corpus.jsonl"
     
     if not output_path.exists():
+        url = "https://dumps.wikimedia.org/enwiki/latest/enwiki-latest-pages-articles-multistream.xml.bz2"
+        wiki_dump_path = root / "custom_corpus" / dataset / "enwiki-latest-pages-articles-multistream.xml.bz2s"
+        download(url, wiki_dump_path)
+        
         titles = get_doc_titles(root, dataset)
         
         print(f"Searching for {len(titles):,} Wikipedia pages")

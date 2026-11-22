@@ -11,9 +11,29 @@ Core Idea:
 - Each document generates an independent answer
 - Final answer is determined by majority voting
 """
-
+import yaml
 from typing import List, Dict, Tuple, Optional
+from dataclasses import dataclass, field
 from collections import Counter
+
+@dataclass
+class HODORConfig:
+    use_hodor: bool = False
+    hodor_model: str = "gemini-2.0-flash"
+    
+    @classmethod
+    def from_yaml(cls, path: str) -> "HODORConfig":
+        """Load config from YAML file"""
+        with open(path, "r") as f:
+            data = yaml.safe_load(f)
+        
+        defense_cfg = data.get("defense", {})
+        hodor_cfg = defense_cfg.get("hodor", {})
+        
+        return cls(
+            use_hodor=hodor_cfg.get("use_hodor", False),
+            hodor_model=hodor_cfg.get("hodor_model", "gemini-2.0-flash")            
+        )
 
 
 class HODORDefense:

@@ -24,6 +24,11 @@ FIRST_K_KEY = "retrieval_first_k_context"
 TOP_K_KEY = "retrieval_top_k_context"
 RERANKER_KEY = "reranker_top_k_context"
 
+# Defense keys in pipeline output
+DEFENSES_KEY = "defenses"
+HODOR_KEY = "hodor"
+TRUSTRAG_KEY = "trustrag_context"
+
 
 def chunk_key(value: Any) -> str:
     """Normalize a chunk id so None / missing / 0 are handled consistently."""
@@ -70,8 +75,9 @@ def load_corpus(path: str) -> Tuple[Dict[str, List[Dict[str, Any]]], Dict[str, S
             continue
         by_title[str(title)].append(record)
 
-        if record.get("query_id") is not None and is_golden_chunk_of(record, record["query_id"]):
-            golden_by_query[str(record["query_id"])].add((str(title), chunk_key(record.get("chunk"))))
+        query_ids = record.get("query_ids") or record.get("query_id") or None
+        if query_ids is not None and is_golden_chunk_of(record, query_ids):
+            golden_by_query[str(query_ids)].add((str(title), chunk_key(record.get("chunk"))))
     return by_title, golden_by_query
 
 
@@ -100,8 +106,16 @@ def get_query_adv_passages(qid: str, ad_entry: Dict[str, Any]) -> Optional[List[
     ]
 
 
-def get_context(result: Dict, key: str) -> List:
-    value = result.get(key)
+def get_context(result: Dict, key: str | List[str]) -> List:
+    if isinstance(key, str):
+        value = result.get(key)
+    elif isinstance(key, list):
+        curr_dict = result
+        for k in key:
+            curr_dict = curr_dict.get(key, {})
+    else:
+        value = None
+        
     if value is None:
         return []
     return value if isinstance(value, list) else [value]
@@ -130,7 +144,11 @@ def get_titles_chunk_pairs(entries: Sequence) -> Set[Pair]:
             continue
         pairs.add((str(title), chunk_key(entry.get("chunk"))))
     return pairs
+    
 
+# ============================================================================
+# Helper Functions
+# ============================================================================
 
 def config_flag(settings: Dict[str, Any], key: str) -> bool:
     """Read a required true/false setting from config_yaml.attack_changes."""
@@ -140,6 +158,31 @@ def config_flag(settings: Dict[str, Any], key: str) -> bool:
     if isinstance(value, str):
         return value.strip().lower() in ("true", "1", "yes", "on")
     return bool(value)
+    
+    
+def has_adv_doc(context: Sequence, doc_type: str, qid: str) -> bool:
+    """True if the context holds this query's whole attribute/bridge document."""
+    return any(
+        isinstance(entry, dict)
+        and str(entry.get("doc_type", "")).lower() == doc_type
+        and entry.get("query_id") is not None
+        and str(entry["query_id"]) == qid
+        for entry in context
+    )
+
+
+def count_golden_passages(context: Sequence, qid: str) -> int:
+    """Number of distinct passages in the context whose "query_ids" list contains this query."""
+    found: Set[str] = set()
+    for index, entry in enumerate(context):
+        if not isinstance(entry, dict):
+            continue
+        query_ids = entry.get("query_ids")
+        if not isinstance(query_ids, list) or qid not in {str(q) for q in query_ids}:
+            continue
+        title = entry.get("title")
+        found.add(str(title) if title is not None else f"#{index}")
+    return len(found)
 
 
 # ============================================================================
@@ -147,7 +190,7 @@ def config_flag(settings: Dict[str, Any], key: str) -> bool:
 # ============================================================================
 
 
-def build_stage_plan(reranker_enabled: bool) -> List[Tuple[str, str]]:
+def build_stage_plan(config: dict) -> List[Tuple[str, str]]:
     """Ordered (stage name, context key) pairs for this pipeline.
 
     The plan is the same with or without the chunker.
@@ -161,16 +204,29 @@ def build_stage_plan(reranker_enabled: bool) -> List[Tuple[str, str]]:
         top_k_retrieval   <- retrieval_top_k_context
         llm_context       <- reranker_top_k_context       (reranker output goes to the LLM)
     """
-    if reranker_enabled:
-        return [
-            ("first_k_retrieval", FIRST_K_KEY),
-            ("top_k_retrieval", TOP_K_KEY),
-            ("llm_context", RERANKER_KEY),
-        ]
-    return [
+    attack_changes = config.get("attack_changes", {})
+    defenses = config.get("defenses", {})
+    reranker_enabled = config_flag(attack_changes, "reranker")
+    defenses_enabled = config_flag(config, "defenses")
+    #hodor_enabled = config_flag(defenses.get("hodor", {}), "use_hodor")
+    trustrag_enabled = config_flag(defenses.get("trustrag", {}), "use_trustrag")
+    
+    stages = [
         ("first_k_retrieval", FIRST_K_KEY),
-        ("llm_context", TOP_K_KEY),
+        ("top_k_retrieval", TOP_K_KEY)
     ]
+    
+    if reranker_enabled:
+        stages.append(("top_k_reranker", RERANKER_KEY))
+    #if defenses_enabled:
+        #if hodor_enabled:
+        #    stages.append(("hodor", HODOR_KEY))
+        if trustrag_enabled:
+            stages.append(("trustrag", TRUSTRAG_KEY))
+            
+    #stages[-1][0] = "llm_context"
+    
+    return stages
 
 
 def stage_block(totals: Dict[str, int], retained: Dict[str, int], source_context: str) -> Dict[str, Any]:
@@ -192,6 +248,127 @@ def stage_block(totals: Dict[str, int], retained: Dict[str, int], source_context
     block["golden_chunk_retention_rate"] = rate(retained["golden"], totals["golden"])
     return block
 
+# ============================================================================
+# Defense rejection metrics (TrustRAG)
+# ============================================================================
+
+def get_rejection_stage(entry: Dict[str, Any]) -> str:
+    """
+    extract stage responsible for rejecting a document
+    expected metadata: rejected_stage = 'stage1' or 'stage2'
+    """
+    
+    value = entry.get("stage")
+    if value is None:
+        return "unknown"
+
+    value = str(value).lower().replace("_", "").replace(" ", "")
+    
+    if value in ("stage1", "1"):
+        return "stage1"
+        
+    if value in ("stage2", "2"):
+        return "stage2"
+        
+    raise ValueError(f"Cannot identify rejection stage for document: {entry.get('title', '')}")
+    
+    
+def classify_rejected_document(entry: Dict[str, Any], qid: str) -> str:
+    """Classify rejected document as attribute, bridge, golden, or benign"""
+    title = str(entry.get("title", "")).lower()
+    doc_type = str(entry.get("doc_type", "")).lower()
+    
+    # check for adverarial doc types
+    if doc_type == "attribute" or title == f"adv-{qid}-attribute":
+        return "attribute"
+        
+    if doc_type == "bridge" or title == f"adv-{qid}-bridge":
+        return "bridge"
+        
+    # check for golden passage doc type
+    if is_golden_chunk_of(entry, qid):
+        return "golden"
+        
+    query_ids = entry.get("query_ids") or entry.get("query_id") or ""
+    if (isinstance(query_ids, list) and qid in [str(val) for val in query_ids]) or (isinstance(query_ids, str) and str(query_ids) == qid):
+        return "golden"
+        
+    return "benign"
+    
+def rejected_item_identity(entry: Dict[str, Any]) -> Tuple[str, str]:
+    """Create a stable identity to remove duplicated rejected items"""
+    title = next((entry[k] for k in ("title", "doc_id", "id") if entry.get(k) is not None), None)
+    
+    if title is None:
+        title = json.dumps(entry, sort_keys=True, default=str)
+        
+    return (str(title), chunk_key(entry.get("chunk")))
+    
+
+def build_rejection_block(rejected_entries: Sequence[Dict[str, Any]], qid: str) -> Dict[str, Any]:
+    """Calculate unique rejected documents/chunks and category counts"""
+    
+    categories = {
+        "attribute": set(),
+        "bridge": set(),
+        "golden": set(),
+        "benign": set()
+    }
+    
+    for entry in rejected_entries:
+        if not isinstance(entty, dict):
+            continue
+            
+        category = classify_rejected_document(entry, qid)
+        identity = rejected_item_identity(entry)
+        categories[category].add(identity)
+        
+    result = {}
+    for category, identities in categories.items():
+        result[f"rejected_{category}_chunks"] = len(identities)
+        result[f"rejected_{category}_documents"] = len((title for title, _ in identities))
+        
+    # attribite + bridge
+    adversarial = categories["attribute"] | categories["bridge"]
+    result["rejected_adversarial_chunks"] = len(adversarial)
+    result["rejected_adversarial_documents"] = len((title for title, _ in adversarial))
+    
+    return result
+    
+
+def build_trustrag_rejection_metrics(result: Dict[str, Any], qid: str) -> Dict[str, Any]:
+    """Calculate TrustRAG stage1, stage2, and overall rejection metrics"""
+    defenses = result.get("defenses", {})
+    trustrag_metadata = defenses.get("trustrag", {})
+    rejected_context = result.get("rejected_context", [])
+    
+    if not isinstance(rejected_context, list):
+        raise ValueError(f"defenses/trustrag/rejected_context must be a list for query {qid}")
+        
+    stage1_entries, stage2_entries = [], []
+    for entry in rejected_context:
+        if not isinstance(entry, dict):
+            continue
+        
+        stage = get_rejection_stage(entry)
+        
+        if stage == "stage1":
+            stage1_entries.append(entry)
+        elif stage == "stage2":
+            stage2_entries.append(entry)
+            
+    overall_entries = list(dict.fromkeys(stage1_entries + stage2_entries))
+    
+    metrics = {
+        "stage1_rejections": build_rejection_block(stage1_entries, qid),
+        "stage2_rejections": build_rejection_block(stage2_entries, qid),
+        "overall_rejections": build_rejection_block(overall_entries, qid)
+    }
+    
+    return metrics
+        
+    
+    
 
 # ============================================================================
 # Query summaries
@@ -242,31 +419,6 @@ def build_query_summary(
         "totals": totals,
         "retained": retained,
     }
-
-
-def has_adv_doc(context: Sequence, doc_type: str, qid: str) -> bool:
-    """True if the context holds this query's whole attribute/bridge document."""
-    return any(
-        isinstance(entry, dict)
-        and str(entry.get("doc_type", "")).lower() == doc_type
-        and entry.get("query_id") is not None
-        and str(entry["query_id"]) == qid
-        for entry in context
-    )
-
-
-def count_golden_passages(context: Sequence, qid: str) -> int:
-    """Number of distinct passages in the context whose "query_ids" list contains this query."""
-    found: Set[str] = set()
-    for index, entry in enumerate(context):
-        if not isinstance(entry, dict):
-            continue
-        query_ids = entry.get("query_ids")
-        if not isinstance(query_ids, list) or qid not in {str(q) for q in query_ids}:
-            continue
-        title = entry.get("title")
-        found.add(str(title) if title is not None else f"#{index}")
-    return len(found)
 
 
 def build_query_summary_no_chunker(
@@ -432,7 +584,15 @@ def judge_result(client: Any, result: Dict[str, Any], print_prompt: bool = True)
     )
     if print_prompt:
         tqdm.write(f"\n{'=' * 70}\n[llm-judge] query {qid}\n{'=' * 70}\n{prompt}\n{'=' * 70}")
-    return parse_judge_bool(client.chat(JUDGE_SYSTEM_MESSAGE, prompt))
+    
+    judge_text = client.chat(JUDGE_SYSTEM_MESSAGE, prompt)
+    verdict = parse_judge_bool(judge_text)
+    
+    if print_prompt:
+        tqdm.write(f"[llm-judge] query {qid} output: {judge_text.strip()}")
+        tqdm.write(f"[llm-judge] query {qid} verdict: {verdict}")
+        
+    return verdict
 
 
 def run_llm_judge(
@@ -500,9 +660,15 @@ def compute_metrics(
     results = [r for r in output_dict.get("results", []) if isinstance(r, dict)]
 
     # Pipeline switches come only from config_yaml.attack_changes ("chunk" and "reranker").
-    attack_changes = (output_dict.get("config_yaml") or {}).get("attack_changes") or {}
+    config = output_dict.get("config_yaml", {})
+    attack_changes = config.get("attack_changes", {})
+    defenses = config.get("defenses", {})
     chunker_enabled = config_flag(attack_changes, "chunk")
     reranker_enabled = config_flag(attack_changes, "reranker")
+    defenses_enabled = config_flag(config, "defenses")
+    #hodor_enabled = config_flag(defenses.get("hodor", {}), "use_hodor")
+    trustrag_enabled = config_flag(defenses.get("trustrag", {}), "use_trustrag")
+    
 
     # The corpus is only needed when passages were chunked.
     corpus: Dict[str, List[Dict[str, Any]]] = {}
@@ -512,7 +678,7 @@ def compute_metrics(
             raise ValueError("--corpus-file is required when the chunker is enabled")
         corpus, golden_by_query = load_corpus(corpus_path)
 
-    stage_plan = build_stage_plan(reranker_enabled)
+    stage_plan = build_stage_plan(config)
     stage_sources = dict(stage_plan)
 
     # LLM judge: model and endpoint come from config_yaml.llm of the output file.
@@ -571,6 +737,13 @@ def compute_metrics(
                 if use_llm_judge
                 else {}
             ),
+            **(
+                {
+                    "trustrag_rejections": build_trustrag_rejection_metrics(
+                        next( (r for r in results if str(r.get("id", "")) == str(row["query_id"])), str(row["query_id"]))
+                    )
+                } if trustrag_enabled else {}
+            )
         })
 
     # ---- pooled across all scored queries ---------------------------------

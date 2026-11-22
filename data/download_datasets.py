@@ -11,20 +11,63 @@ Usage:
 """
 
 import os
+import re
 import csv
 import json
+import shutil
 import logging
 import argparse
 import numpy as np
 from pathlib import Path
 from collections import defaultdict
 from typing import List, Dict, Tuple, Iterable
+from datasets import load_dataset
 
 # BEIR download URL
 BEIR_URL = "https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/{}.zip"
 
 # Supported datasets
 DATASETS = ["nq", "hotpotqa", "msmarco"]
+
+def norm(q: str) -> str:
+    q = q.lower().strip()
+    q = re.sub(r"\?+$", "", q)
+    q = re.sub(r"[^\w\s]", " ", q)
+    q = re.sub(r"\s+", " ", q)
+    return q
+    
+def add_nq_answers(queries_path: Path):
+    nq = load_dataset("google-research-datasets/nq_open", split="validation")
+    answers_by_q = {}
+    for row in nq:
+        answers_by_q.setdefault(norm(row["question"]), row["answer"])
+        
+    backup = queries_path.with_suffix(".jsonl.bak")
+    if not backup.exists():
+        shutil.copy(queries_path, backup)
+        
+    out, matched, missing = [], 0, []
+    with open(backup, encoding="utf-8") as f:
+        for line in f:
+            if not line.strip():
+                continue
+            item = json.loads(line)
+            answers = answers_by_q.get(norm(item["text"]))
+            meta = item.get("metadata", {})
+            if answers:
+                meta["answers"] = answers
+                matched += 1
+            else:
+                missing.append(item["_id"])
+                
+            item["metadata"] = meta
+            out.append(item)
+            
+    with open(queries_path, "w", encoding="utf-8") as f:
+        for item in out:
+            f.write(json.dumps(item, ensure_ascii=False) + "\n")
+            
+    print(f"Matched {matched}/{len(out)}; unmatched: {len(missing)}")
 
 
 def download_beir_dataset(dataset: str, out_dir: Path) -> Path:
@@ -235,7 +278,7 @@ def encode_corpus_contriever(
         text_dict = {"title": doc.get("title", ""), "chunk": None, "text": text.strip()}
         if cid in corpus_query_mapping:
             query_ids = corpus_query_mapping[cid]
-            text_dict["query_ids"] = query_ids
+            text_dict["query_id"] = query_ids
         texts.append(text_dict)
     
     if not emb_path.exists():
@@ -313,6 +356,7 @@ def prepare_dataset(
         qrels_dir / "test.tsv",
     ]
     query_mapping = load_qrels_by_query(qrels_paths)
+    add_nq_answers(queries_path)
     queries = load_queries(queries_path)
     
     
