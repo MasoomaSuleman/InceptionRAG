@@ -1,18 +1,13 @@
 # InceptionRAG Configuration
 # Copy from config.yaml.template and fill in your API credentials
 
-#llm:
-#  provider: "openai"               # openai / azure / custom / hf
-#  api_key: ""                  # unused for local HF models
-#  api_base: ""                 # optional custom endpoint
-#  model: "gpt-4o-mini" # local HF model name
   
 llm:
   provider: "hf"
   api_key: "EMPTY"
   api_base: "http://localhost:8000/v1"
   model: "Qwen/Qwen2.5-3B-Instruct" #"zai-org/GLM-5.3"
-  llm_judge_model: "Qwen/Qwen2.5-7B-Instruct"
+  llm_judge_model: "Qwen/Qwen2.5-3B-Instruct"
 
 attack: 
   retrieval_top_k: 20
@@ -22,11 +17,19 @@ attack:
   dual_injection: true
   
 attack_changes:
-  chunk: true
-  chunking_strategy: "word-based"
-  chunk_size: 100
-  chunk_overlap: 12
-  reranker: false
+  chunk: false
+  chunking_strategy: "token-based"
+  chunk_size: 256
+  chunk_overlap: 32
+  reranker: true
   reranker_model: "cross-encoder/ms-marco-MiniLM-L-6-v2"
   reranker_top_k: 5
   
+
+defenses:
+  filterrag:
+    enabled: false
+    epsilon: 0.2
+    semantic_threshold: 0.6
+    slm_model: "meta-llama/Meta-Llama-3-8B-Instruct"
+    max_new_tokens: 64

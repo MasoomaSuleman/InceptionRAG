@@ -237,17 +237,6 @@ class TwoStageRetriever:
         with torch.no_grad():
             emb = self.contriever(**inputs).last_hidden_state.mean(dim=1).float().cpu().numpy()[0]
         return emb / (np.linalg.norm(emb) + 1e-8)
-
-    @staticmethod
-    def _as_record(doc) -> dict:
-        """Normalise a corpus entry (dict or plain str) to {title, chunk, text}."""
-        if isinstance(doc, dict):
-            doc_dict = {"title": doc.get("title"), "chunk": doc.get("chunk"), "text": doc.get("text", "")}
-            if doc.get("query_id") is not None:
-                doc_dict["query_id"] = doc.get("query_id")
-                doc_dict["doc_type"] = doc.get("doc_type")
-            return doc_dict
-        return {"title": None, "chunk": None, "text": doc}
     
     def retrieve(self, question: str, poisoned: List[dict] = None) -> Tuple[List[str], int, List[dict], List[dict], List[dict]]:
         """
@@ -261,8 +250,9 @@ class TwoStageRetriever:
         corpus_scores = self.corpus_embs @ query_emb
         top_indices = np.argsort(corpus_scores)[::-1][:self.config.retrieval_first_k]
 
-        candidate_records = [self._as_record(self.corpus_texts[i]) for i in top_indices]
+        candidate_records = [self.corpus_texts[i] for i in top_indices]
         candidate_texts = [r["text"] for r in candidate_records]
+        #candidate_texts = [r["text"] if isinstance(r, dict) else r for r in candidate_records]
         num_corpus = len(candidate_texts)
         candidate_scores = corpus_scores[top_indices]
 
@@ -271,7 +261,7 @@ class TwoStageRetriever:
             poisoned_texts = [r["text"] for r in poisoned]
             poisoned_embs = np.array([self.encode(t) for t in poisoned_texts])
             candidate_texts += list(poisoned_texts)
-            candidate_records += [self._as_record(t) for t in poisoned]
+            candidate_records += poisoned
             
         candidate_embs = np.array([self.encode(t) for t in candidate_texts])
         candidate_scores = candidate_embs @ query_emb
@@ -1180,11 +1170,11 @@ def query_metrics_by_query_id(query_level_metrics: List):
         
     return query_metrics_mapping
 
-def add_metrics(ad_file: str, corpus_file: str, output_file: str):
+def add_metrics(ad_file: str, corpus_file: str, output_file: str, llm_judge_client):
     with open(output_file, "r", encoding="utf-8") as f:
         output = json.load(f)
         
-    metrics = compute_metrics(ad_file, corpus_file, output_file)
+    metrics = compute_metrics(ad_file, corpus_file, output_file, use_llm_judge=True, judge_client=llm_judge_client)
     query_metrics_mapping = query_metrics_by_query_id(metrics.get("queries", []))
     
     overall_metrics = metrics.get("overall", {})
@@ -1193,16 +1183,13 @@ def add_metrics(ad_file: str, corpus_file: str, output_file: str):
         qid = res.get("id", "")
         query_metrics = query_metrics_mapping[qid]
         res["chunk_retention"] = query_metrics.get("chunk_retention", {})
-        res["LLM_as_judge_additional_metrics"] = query_metrics.get(
-            "LLM_as_judge_additional_metrics"
-        )
-
+        res["llm_judge_metrics"] = query_metrics.get("LLM_as_judge_additional_metrics", "")
+        
     new_output = {
         "config": output.get("config", {}),
         "config_yaml": output.get("config_yaml", {}),
         "stats": output.get("stats", {}),
-        "overall_chunk_retention": overall_metrics.get("chunk_retention", {}),
-        "LLM_as_judge_additional_metrics": overall_metrics.get("llm_judge", {}),
+        "overall_chunk_retention": overall_metrics,
         "results": output.get("results", [])
     }
         
@@ -1584,6 +1571,7 @@ def main():
     if args.stage1 or args.zoso_only:
         # Load corpus
         print("\n[4/5] Loading corpus...")
+        print("ACTUAL CORPUS FILE:", args.corpus_texts)
         corpus_embs = np.load(args.corpus_embs)
         with open(args.corpus_texts, "r") as f:
             corpus_texts = json.load(f)
@@ -1722,7 +1710,8 @@ def main():
     
     results = attacker.attack_batch(all_data, output_path)
     
-    add_metrics(args.data, args.corpus_texts, output_path)
+    llm_judge_client = create_llm_client(llm_judge_config)
+    add_metrics(args.data, args.corpus_texts, output_path, llm_judge_client)
 
     llm_judge_success = sum(
         1 for r in results
