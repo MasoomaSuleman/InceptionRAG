@@ -6,7 +6,7 @@
 #  api_key: ""                  # unused for local HF models
 #  api_base: ""                 # optional custom endpoint
 #  model: "gpt-4o-mini" # local HF model name
-  
+
 llm:
   provider: "hf"
   api_key: "EMPTY"

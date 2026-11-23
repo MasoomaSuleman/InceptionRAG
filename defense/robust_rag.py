@@ -140,7 +140,7 @@ class RobustRAGDefense:
                 "Answer the question based only on the provided context. "
                 "If the context does not contain enough information, "
                 "say 'I don't know'. "
-                "Output: 'Final answer: <answer>'"
+                "Output: <answer>'"
             ),
             temperature=0.0,
             max_tokens=self.max_tokens,
@@ -282,7 +282,7 @@ class RobustRAGDefense:
                 f"documents:\n{hints}\n\n"
                 "Use the aggregated information above to answer the "
                 "question. Do not invent unsupported facts. "
-                "Output: 'Final answer: <answer>'"
+                "Output: <answer>'"
             ),
             system_message=(
                 "You are answering a question using information "
