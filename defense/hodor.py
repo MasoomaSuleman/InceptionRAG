@@ -27,8 +27,8 @@ class HODORConfig:
         with open(path, "r") as f:
             data = yaml.safe_load(f)
         
-        defense_cfg = data.get("defense", {})
-        hodor_cfg = defense_cfg.get("hodor", {})
+        defenses_cfg = data.get("defenses", data.get("defense", {}))
+        hodor_cfg = defenses_cfg.get("hodor", {})
         
         return cls(
             use_hodor=hodor_cfg.get("use_hodor", False),

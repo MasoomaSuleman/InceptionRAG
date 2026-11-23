@@ -30,8 +30,8 @@ class TrustRAGConfig:
         with open(path, "r") as f:
             data = yaml.safe_load(f)
         
-        defense_cfg = data.get("defense", {})
-        trustrag_cfg = defense_cfg.get("trustrag", {})
+        defenses_cfg = data.get("defenses", data.get("defense", {}))
+        trustrag_cfg = defenses_cfg.get("trustrag", {})
         
         return cls(
             use_trustrag=trustrag_cfg.get("use_trustrag", False),
@@ -167,7 +167,7 @@ class TrustRAGDefense:
         if not text1 or not text2:
             return 0.0
             
-        scores = self.rouge_score(text1, text2)
+        scores = self.rouge.score(text1, text2)
         return float(scores["rougeL"].fmeasure)
         
     # ------------------------------------------------------------------
@@ -192,7 +192,7 @@ class TrustRAGDefense:
         
         if n < 3:
             return (
-                list(rankge(n)),
+                list(range(n)),
                 [],
                 {
                     "reason": "insufficient_documents_for_clustering",
@@ -204,7 +204,7 @@ class TrustRAGDefense:
         embeddings = self._embed_docs(texts)
         
         if embeddings.shape[0] != n or embeddings.shape[1] == 0:
-            returan (
+            return (
                 list(range(n)),
                 [],
                 {"reason": "embedding_generation_failed", "fallback_used": True}
@@ -249,7 +249,7 @@ class TrustRAGDefense:
             
             # Pairwise ROUGE-L similarity scores
             rouge_scores = []
-            for i in range(len(indicies)):
+            for i in range(len(indices)):
                 for j in range(i+1, len(indices)):
                     score = self._rouge_l_similarity(texts[indices[i]], texts[indices[j]])
                     rouge_scores.append(score)
@@ -324,7 +324,7 @@ class TrustRAGDefense:
             "rejected_count": len(rejected_texts)
         })
         
-        return retained, rejected, details
+        return retained_texts, rejected_texts, details
         
     def stage2_filter(self, question: str, documents: List[dict], llm) -> Tuple[List[dict], List[dict], Dict[str, Any]]:
         """
@@ -456,7 +456,7 @@ class TrustRAGDefense:
         if not all(isinstance(doc, dict) for doc in documents):
             raise TypeError("Every TrustRAG input document must be a dict")
             
-        current_docts = list(documents)
+        current_docs = list(documents)
         rejected_context = []
         retained = []
         metadata = {
@@ -472,6 +472,7 @@ class TrustRAGDefense:
         }
         
         if stage1 and current_docs:
+            print(f"    [Defense] Applying TrustRAG Stage 1 filtering...", end=" ", flush=True)
             retained, rejected, stage1_details = self.stage1_filter(current_docs)
             
             rejected_context += [{**doc, "stage": "stage1"} for doc in rejected]
@@ -483,6 +484,7 @@ class TrustRAGDefense:
             current_docs = retained
             
         if stage2 and current_docs:
+            print(f"    [Defense] Applying TrustRAG Stage 2 consolidation...", end=" ", flush=True)
             consolidated, rejected, stage2_details = self.stage2_filter(question, current_docs, llm)
             
             rejected_context += [{**doc, "stage": "stage2"} for doc in rejected]

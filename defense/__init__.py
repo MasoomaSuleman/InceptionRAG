@@ -7,5 +7,14 @@ A defense mechanism against multi-document poisoning attacks.
 
 from .hodor import HODORDefense, HODORConfig
 from .trust_rag import TrustRAGDefense, TrustRAGConfig
+from .robust_rag import RobustRAGDefense, RobustRAGConfig
 
-__all__ = ["HODORDefense", "HODORConfig", "TrustRAGDefense", "TrustRAGConfig"]
+__all__ = [
+    "HODORDefense",
+    "HODORConfig",
+    "TrustRAGDefense",
+    "TrustRAGConfig",
+    "RobustRAGDefense",
+    "RobustRAGConfig",
+]
+

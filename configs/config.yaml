@@ -15,13 +15,13 @@ llm:
   llm_judge_model: "Qwen/Qwen2.5-7B-Instruct"
   
 data:
-  dataset: "nq"
-  data_root: "/tmp/alegault/InceptionRAG_data"
+  dataset: "hotpotqa"
+  data_root: "/tmp/masoo20/inception_rag"
 
 attack: 
   retrieval_top_k: 20
-  retrieval_first_k: 20
-  cttft_neighbor_k: 10
+  retrieval_first_k: 50
+  cttft_neighbor_k: 1
   noise_injection: true
   dual_injection: true
   
@@ -39,10 +39,16 @@ defenses:
     use_hodor: False
     hodor_model: "Qwen/Qwen2.5-3B-Instruct"
   trustrag:
-    use_trustrag: False
+    use_trustrag: false
     stage1: True
     stage2: True
     embedding_model: "princeton-nlp/sup-simcse-bert-base-uncased"
     rouge_threshold: 0.25
     cohesion_threshold: 0.85
-  
+  robustrag:
+    use_robustrag: True
+    relative_threshold: 0.2
+    absolute_threshold: 3
+    abstention_threshold: 1
+    max_tokens: 100
+

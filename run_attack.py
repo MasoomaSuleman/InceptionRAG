@@ -24,7 +24,9 @@ from .defense import (
     HODORDefense,
     HODORConfig,
     TrustRAGDefense,
-    TrustRAGConfig
+    TrustRAGConfig,
+    RobustRAGDefense,
+    RobustRAGConfig,
 )
 
 import warnings
@@ -75,7 +77,7 @@ class InceptionRAGConfig:
     # defenses
     hodor_config: HODORConfig = field(default_factory=HODORConfig)
     trustrag_config: TrustRAGConfig = field(default_factory=TrustRAGConfig)
-
+    robustrag_config: RobustRAGConfig = field(default_factory=RobustRAGConfig)
     llm_judge: bool = False
     llm_juddge_config: LLMConfig = field(default_factory=LLMConfig)
     measure_similarity: bool = False
@@ -404,7 +406,21 @@ class InceptionRAGAttacker:
                 rouge_threshold=trustrag_cfg.rouge_threshold,
                 cohesion_threshold=trustrag_cfg.cohesion_threshold
             )
+
         
+        # RobustRAG defense
+        self.robustrag = None
+
+        if self.config.robustrag_config.use_robustrag:
+            robustrag_cfg = self.config.robustrag_config
+
+            self.robustrag = RobustRAGDefense(
+                relative_threshold=robustrag_cfg.relative_threshold,
+                absolute_threshold=robustrag_cfg.absolute_threshold,
+                abstention_threshold=robustrag_cfg.abstention_threshold,
+                max_tokens=robustrag_cfg.max_tokens,
+            )
+
         # Stats
         self.stats = {
             "total": 0,
@@ -567,11 +583,13 @@ class InceptionRAGAttacker:
             random.shuffle(context)
             
         defense_metadata = {}
+
         if self.config.trustrag_config.use_trustrag and self.trustrag:
+            print(f"    [Defense] Applying TrustRAG defense...", end=" ", flush=True)
             trustrag_cfg = self.config.trustrag_config
             defended_context, rejected_context, trustrag_metadata = self.trustrag.apply(
                 question=question,
-                documents=final_context,
+                documents=context_dicts["final_context"],
                 llm=self.llm,
                 stage1=trustrag_cfg.stage1,
                 stage2=trustrag_cfg.stage2
@@ -579,14 +597,24 @@ class InceptionRAGAttacker:
             
             context = [doc.get("text", "") for doc in defended_context]
             context_dicts["trustrag"] = defended_context
-            
-            defense_metadata["trustrag"]["defense_input"] = final_context
+
+            defense_metadata["trustrag"] = {}
+            defense_metadata["trustrag"]["defense_input"] = context_dicts["final_context"]
             defense_metadata["trustrag"]["rejected_context"] = rejected_context
             defense_metadata["trustrag"]["metadata"] = trustrag_metadata
-        
+
         try:
+            if self.config.robustrag_config.use_robustrag and self.robustrag:
+            
+                    answer, robustrag_info = self.robustrag.apply(
+                        question=question,
+                        documents=context_dicts["final_context"],
+                        llm=self.llm,
+                    )
+        
+                    defense_metadata["robustrag"] = robustrag_info
             # Apply HODOR defense if enabled
-            if self.config.hodor_config.use_hodor and self.hodor:
+            elif self.config.hodor_config.use_hodor and self.hodor:
                 answer, self.last_hodor_info = self.hodor.apply(question, context)
                 defense_metadata["hodor"] = self.last_hodor_info
             else:
@@ -1415,6 +1443,7 @@ def main():
             # defenses
             hodor_config=HODORConfig.from_yaml(args.config),
             trustrag_config=TrustRAGConfig.from_yaml(args.config),
+            robustrag_config=RobustRAGConfig.from_yaml(args.config),
         )
         
     else:
@@ -1771,6 +1800,7 @@ def main():
             zoso = json.load(f)
         optimal_anchor_idx = zoso.get("best", {}).get("anchor_idx", 0)
         optimal_bridge_idx = zoso.get("best", {}).get("bridge_idx", 0)
+
         print(f"  ZOSO optimal: anchor={optimal_anchor_idx}, bridge={optimal_bridge_idx} (from {args.zoso_results})")
     
     # ========== CHUNKING ==========
@@ -1859,7 +1889,7 @@ def main():
     print(f"L1 Success: {attacker.stats['l1_success']}")
     print(f"L2 Success: {attacker.stats['l2_success']}")
     print(f"L3 Success: {attacker.stats['l3_success']}")
-    print(f"\n📁 Results saved to: {output_path}")
+    print(f"\n Results saved to: {output_path}")
 
 
 if __name__ == "__main__":

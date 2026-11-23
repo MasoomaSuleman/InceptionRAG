@@ -326,12 +326,12 @@ def build_rejection_block(rejected_entries: Sequence[Dict[str, Any]], qid: str) 
     result = {}
     for category, identities in categories.items():
         result[f"rejected_{category}_chunks"] = len(identities)
-        result[f"rejected_{category}_documents"] = len((title for title, _ in identities))
-        
+        result[f"rejected_{category}_documents"] = len({title for title, _ in identities})
+
     # attribite + bridge
     adversarial = categories["attribute"] | categories["bridge"]
     result["rejected_adversarial_chunks"] = len(adversarial)
-    result["rejected_adversarial_documents"] = len((title for title, _ in adversarial))
+    result["rejected_adversarial_documents"] = len({title for title, _ in adversarial})
     
     return result
     
@@ -740,7 +740,11 @@ def compute_metrics(
             **(
                 {
                     "trustrag_rejections": build_trustrag_rejection_metrics(
-                        next( (r for r in results if str(r.get("id", "")) == str(row["query_id"])), str(row["query_id"]))
+                        next(
+                            r for r in results
+                            if str(r.get("id", "")) == str(row["query_id"])
+                        ),
+                        str(row["query_id"]),
                     )
                 } if trustrag_enabled else {}
             )
