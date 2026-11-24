@@ -15,8 +15,8 @@ llm:
   llm_judge_model: "Qwen/Qwen2.5-7B-Instruct"
   
 data:
-  dataset: "hotpotqa"
-  data_root: "/tmp/masoo20/inception_rag"
+  dataset: "nq"
+  data_root: "/tmp/parmounk/InceptionRAG_data"
 
 attack: 
   retrieval_top_k: 20
@@ -36,7 +36,7 @@ attack_changes:
 
 defenses:
   hodor:
-    use_hodor: False
+    use_hodor: false
     hodor_model: "Qwen/Qwen2.5-3B-Instruct"
   trustrag:
     use_trustrag: false
@@ -46,9 +46,19 @@ defenses:
     rouge_threshold: 0.25
     cohesion_threshold: 0.85
   robustrag:
-    use_robustrag: True
+    use_robustrag: false
     relative_threshold: 0.2
     absolute_threshold: 3
     abstention_threshold: 1
     max_tokens: 100
+  filterrag:
+   use_filterrag: true
+   epsilon: 0.2
+   semantic_threshold: 0.6
+   slm_model: "Qwen/Qwen2.5-3B-Instruct"
+   max_new_tokens: 64
+   embedding_model: "sentence-transformers/all-MiniLM-L6-v2"
+   embedding_device: "cuda"
+   top_k: null
+   
 

@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import List, Dict, Tuple, Optional, Sequence
 from dataclasses import dataclass, field
 
+
 if __package__ in (None, ""):
     project_root = str(Path(__file__).resolve().parent.parent)
     if project_root not in sys.path:
@@ -20,6 +21,7 @@ if __package__ in (None, ""):
 
 from .llm_client import LLMConfig, LLMClient, create_llm_client
 from .compute_additional_metrics import compute_metrics
+
 from .defense import (
     HODORDefense,
     HODORConfig,
@@ -27,6 +29,8 @@ from .defense import (
     TrustRAGConfig,
     RobustRAGDefense,
     RobustRAGConfig,
+    FilterRAGDefense,
+    FilterRAGConfig,
 )
 
 import warnings
@@ -42,6 +46,7 @@ class InceptionRAGConfig:
     """Full InceptionRAG attack configuration"""
     # LLM settings (supports OpenAI / Azure / Custom API)
     llm_config: LLMConfig = field(default_factory=LLMConfig)
+    filterrag_config: FilterRAGConfig = field(default_factory=FilterRAGConfig)
     
     # Retrieval parameters
     retrieval_top_k: int = 10
@@ -290,8 +295,8 @@ class TwoStageRetriever:
         
         context_dicts = {
             "retrieval_first_k": [self.corpus_texts[i] for i in top_indices],
-            "retrieval_top_k": [candidate_records[i] for i in final_indices],
-            "final_context": [candidate_records[i] for i in top_k_indices],
+            "retrieval_top_k": [candidate_records[i] for i in top_k_indices],
+            "final_context": [candidate_records[i] for i in final_indices],
         }
         
 
@@ -421,6 +426,22 @@ class InceptionRAGAttacker:
                 max_tokens=robustrag_cfg.max_tokens,
             )
 
+        # FilterRAG defense
+        self.filterrag = None
+
+        if self.config.filterrag_config.use_filterrag:
+            filterrag_cfg = self.config.filterrag_config
+
+            self.filterrag = FilterRAGDefense(
+               epsilon=filterrag_cfg.epsilon,
+               semantic_threshold=filterrag_cfg.semantic_threshold,
+               slm_model=filterrag_cfg.slm_model,
+               max_new_tokens=filterrag_cfg.max_new_tokens,
+               embedding_model=filterrag_cfg.embedding_model,
+               embedding_device=filterrag_cfg.embedding_device,
+               slm_device_map=filterrag_cfg.slm_device_map,
+               top_k=filterrag_cfg.top_k,
+         )
         # Stats
         self.stats = {
             "total": 0,
@@ -573,6 +594,11 @@ class InceptionRAGAttacker:
             # Skip retrieval: use poisoned docs directly (higher ASR)
             if self.config.skip_retrieval:
                 context = [d["text"] for d in poisoned]
+                context_dicts = {
+                    "retrieval_first_k": [],
+                    "retrieval_top_k": list(poisoned),
+                    "final_context": list(poisoned),
+             }
             else:
                 context, adv_count, context_dicts  = self.retriever.retrieve(question, poisoned)
 
@@ -580,39 +606,63 @@ class InceptionRAGAttacker:
             context, _, context_dicts  = self.retriever.retrieve(question)
 
         if not self.config.reranker:
-            random.shuffle(context)
-            
+            random.shuffle(context_dicts["final_context"])
+            context = [doc["text"] for doc in context_dicts["final_context"]]
+
         defense_metadata = {}
 
+        if self.filterrag is not None:
+            print("    [Defense] Applying FilterRAG...", flush=True)
+
+            defense_input = context_dicts["final_context"]
+
+            retained_docs, rejected_docs, filterrag_info = self.filterrag.apply(
+                question=question,
+                documents=defense_input,
+            )
+
+            selected_docs = filterrag_info["selected_context"]
+            context = [doc.get("text", "") for doc in selected_docs]
+
+            context_dicts["filterrag"] = retained_docs
+
+            defense_metadata["filterrag"] = {
+                "defense_input": defense_input,
+                "retained_context": retained_docs,
+                "rejected_context": rejected_docs,
+                "metadata": filterrag_info,
+            }
+
         if self.config.trustrag_config.use_trustrag and self.trustrag:
-            print(f"    [Defense] Applying TrustRAG defense...", end=" ", flush=True)
+            print("    [Defense] Applying TrustRAG defense...", end=" ", flush=True)
             trustrag_cfg = self.config.trustrag_config
+
             defended_context, rejected_context, trustrag_metadata = self.trustrag.apply(
                 question=question,
                 documents=context_dicts["final_context"],
                 llm=self.llm,
                 stage1=trustrag_cfg.stage1,
-                stage2=trustrag_cfg.stage2
+                stage2=trustrag_cfg.stage2,
             )
-            
+
             context = [doc.get("text", "") for doc in defended_context]
             context_dicts["trustrag"] = defended_context
 
-            defense_metadata["trustrag"] = {}
-            defense_metadata["trustrag"]["defense_input"] = context_dicts["final_context"]
-            defense_metadata["trustrag"]["rejected_context"] = rejected_context
-            defense_metadata["trustrag"]["metadata"] = trustrag_metadata
+            defense_metadata["trustrag"] = {
+                "defense_input": context_dicts["final_context"],
+                "rejected_context": rejected_context,
+                "metadata": trustrag_metadata,
+            }
 
         try:
             if self.config.robustrag_config.use_robustrag and self.robustrag:
-            
-                    answer, robustrag_info = self.robustrag.apply(
-                        question=question,
-                        documents=context_dicts["final_context"],
-                        llm=self.llm,
-                    )
-        
-                    defense_metadata["robustrag"] = robustrag_info
+                answer, robustrag_info = self.robustrag.apply(
+                    question=question,
+                    documents=context_dicts["final_context"],
+                    llm=self.llm,
+                )
+
+                defense_metadata["robustrag"] = robustrag_info
             # Apply HODOR defense if enabled
             elif self.config.hodor_config.use_hodor and self.hodor:
                 answer, self.last_hodor_info = self.hodor.apply(question, context)
@@ -662,6 +712,9 @@ class InceptionRAGAttacker:
             result["reranker_top_k_context"] = context_dicts["final_context"]
         if self.config.trustrag_config.use_trustrag:
             result["trustrag_context"] = context_dicts["trustrag"]
+
+        if self.filterrag is not None:
+            result["filterrag_context"] = context_dicts["filterrag"]
             
         result["defenses"] = defense_metadata
         
@@ -692,6 +745,9 @@ class InceptionRAGAttacker:
                 if self.config.trustrag_config.use_trustrag:
                     result["trustrag_context"] = context_dicts["trustrag"]
                     
+                if self.filterrag is not None:
+                    result["filterrag_context"] = context_dicts["filterrag"]
+
                 result["defenses"] = defense_metadata
                 
                 if success:
@@ -720,6 +776,8 @@ class InceptionRAGAttacker:
                 if self.config.trustrag_config.use_trustrag:
                     result["trustrag_context"] = context_dicts["trustrag"]
                     
+                if self.filterrag is not None:
+                    result["filterrag_context"] = context_dicts["filterrag"]
                 result["defenses"] = defense_metadata
                 
                 if success:
@@ -1224,7 +1282,7 @@ class AdvCorpusPipeline:
         if file.exists():
             return file
         print(f"Wiki Corpus not found at {file}")
-        if not gol:
+        if not golden_arg:
             print("Please run 'data/download_wiki_corpus.py' first")
         return None
 
@@ -1444,6 +1502,7 @@ def main():
             hodor_config=HODORConfig.from_yaml(args.config),
             trustrag_config=TrustRAGConfig.from_yaml(args.config),
             robustrag_config=RobustRAGConfig.from_yaml(args.config),
+            filterrag_config=FilterRAGConfig.from_yaml(args.config)
         )
         
     else:
