@@ -20,6 +20,7 @@ Note:
 import logging
 import string
 import yaml
+from tqdm import tqdm
 
 from collections import Counter, defaultdict
 from dataclasses import dataclass
@@ -334,13 +335,14 @@ class RobustRAGDefense:
         # Step 1: Generate one response per retrieved record
         # --------------------------------------------------
 
+        pbar = tqdm(
+            total=len(documents),
+            bar_format="{desc}",
+            leave=False,
+        )
+
         for idx, document in enumerate(documents):
-            print(
-                f"[RobustRAG] [{idx + 1}/{len(documents)}] "
-                f"Processing document {idx + 1}...",
-                end=" ",
-                flush=True,
-            )
+            # pbar.set_description(f"[{idx + 1}/{len(documents)}] Processing")
             document_text = self._get_text(document)
 
             if not document_text:
@@ -371,7 +373,10 @@ class RobustRAGDefense:
                     "status": "completed",
                 }
 
-                print("abstained" if abstained else "answered")
+                pbar.set_description(
+                    f"[{idx + 1}/{len(documents)}] {"abstained" if abstained else "answered"}"
+                )
+                pbar.update(1)
 
             except Exception as exc:
                 logger.exception(

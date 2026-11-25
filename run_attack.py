@@ -27,6 +27,12 @@ from .defense import (
     TrustRAGConfig,
     RobustRAGDefense,
     RobustRAGConfig,
+    AVFilter,
+    AVFilterConfig,
+    calibrate_threshold,
+    init_score_fn,
+    FilterRAG,
+    FilterRAGConfig
 )
 
 import warnings
@@ -78,8 +84,12 @@ class InceptionRAGConfig:
     hodor_config: HODORConfig = field(default_factory=HODORConfig)
     trustrag_config: TrustRAGConfig = field(default_factory=TrustRAGConfig)
     robustrag_config: RobustRAGConfig = field(default_factory=RobustRAGConfig)
+    avfilter_config: AVFilterConfig = field(default_factory=AVFilterConfig)
+    filterrag_config: FilterRAGConfig = field(default_factory=FilterRAGConfig)
+
     llm_judge: bool = False
     llm_juddge_config: LLMConfig = field(default_factory=LLMConfig)
+    metrics_llm_judge: bool = True
     measure_similarity: bool = False
 
     
@@ -290,8 +300,8 @@ class TwoStageRetriever:
         
         context_dicts = {
             "retrieval_first_k": [self.corpus_texts[i] for i in top_indices],
-            "retrieval_top_k": [candidate_records[i] for i in final_indices],
-            "final_context": [candidate_records[i] for i in top_k_indices],
+            "retrieval_top_k": [candidate_records[i] for i in top_k_indices],
+            "final_context": [candidate_records[i] for i in final_indices],
         }
         
 
@@ -407,18 +417,43 @@ class InceptionRAGAttacker:
                 cohesion_threshold=trustrag_cfg.cohesion_threshold
             )
 
+        # AVFilter defense
+        self.avfilter = None
+        if self.config.avfilter_config.use_avfilter:
+            av_cfg = self.config.avfilter_config
+            self.avfilter = AVFilter(
+                av_cfg.score_fn,
+                av_cfg.threshold,
+                av_cfg.max_removals,
+                av_cfg.sort_passes,
+                av_cfg.keep_order
+            )
         
         # RobustRAG defense
         self.robustrag = None
-
         if self.config.robustrag_config.use_robustrag:
             robustrag_cfg = self.config.robustrag_config
-
             self.robustrag = RobustRAGDefense(
                 relative_threshold=robustrag_cfg.relative_threshold,
                 absolute_threshold=robustrag_cfg.absolute_threshold,
                 abstention_threshold=robustrag_cfg.abstention_threshold,
                 max_tokens=robustrag_cfg.max_tokens,
+            )
+
+        # FilterRAG defense
+        self.filterrag = None
+        if self.config.filterrag_config.use_filterrag:
+            filterrag_cfg = self.config.filterrag_config
+            self.filterrag = FilterRAG(
+                slm=self.llm._model,
+                tokenizer=self.llm._tokenizer,
+                epsilon=filterrag_cfg.epsilon,
+                semantic_threshold=filterrag_cfg.semantic_threshold,
+                max_new_tokens=filterrag_cfg.max_new_tokens,
+                # top_k=filterrag_cfg.top_k
+                embedding_model=filterrag_cfg.embedding_model,
+                embedding_device=filterrag_cfg.embedding_device,
+                
             )
 
         # Stats
@@ -573,6 +608,11 @@ class InceptionRAGAttacker:
             # Skip retrieval: use poisoned docs directly (higher ASR)
             if self.config.skip_retrieval:
                 context = [d["text"] for d in poisoned]
+                context_dicts = {
+                    "retrieval_first_k": [],
+                    "retrieval_top_k": list(poisoned),
+                    "final_context": list(poisoned)
+                }
             else:
                 context, adv_count, context_dicts  = self.retriever.retrieve(question, poisoned)
 
@@ -581,38 +621,82 @@ class InceptionRAGAttacker:
 
         if not self.config.reranker:
             random.shuffle(context)
+            context = [doc["text"] for doc in context_dicts["final_context"]]
             
         defense_metadata = {}
 
         if self.config.trustrag_config.use_trustrag and self.trustrag:
-            print(f"    [Defense] Applying TrustRAG defense...", end=" ", flush=True)
+            print(f"\n\t[Defense] Applying TrustRAG defense...", end=" ", flush=True)
             trustrag_cfg = self.config.trustrag_config
+            defense_inputs = context_dicts["final_context"]
             defended_context, rejected_context, trustrag_metadata = self.trustrag.apply(
                 question=question,
-                documents=context_dicts["final_context"],
+                documents=defense_inputs,
                 llm=self.llm,
                 stage1=trustrag_cfg.stage1,
                 stage2=trustrag_cfg.stage2
             )
             
+            defense_metadata["trustrag"] = {
+                "defense_input": defense_inputs,
+                "rejected_context": rejected_context,
+                "metadata": trustrag_metadata,
+            }
+
+            if self.config.reranker:
+                context_dicts["reranker_top_k"] = context_dicts.pop("final_context")
+
             context = [doc.get("text", "") for doc in defended_context]
             context_dicts["trustrag"] = defended_context
+            context_dicts["final_context"] = defended_context
 
-            defense_metadata["trustrag"] = {}
-            defense_metadata["trustrag"]["defense_input"] = context_dicts["final_context"]
-            defense_metadata["trustrag"]["rejected_context"] = rejected_context
-            defense_metadata["trustrag"]["metadata"] = trustrag_metadata
+        if self.config.avfilter_config.use_avfilter and self.avfilter:
+            print(f"\n\t[Defense] Applying AVFilter defense...", end=" ", flush=True)
+            defense_inputs = context_dicts["final_context"]
+            defended_context, rejected_context, avfilter_metadata = self.avfilter.filter(
+                question=question,
+                documents=defense_inputs
+            )
 
+            defense_metadata["avfilter"] = {
+                "defense_input": defense_inputs,
+                "rejected_context": rejected_context,
+                "metadata": avfilter_metadata,
+            }
+
+            context = [doc.get("text", "") for doc in defended_context]
+            context_dicts["final_context"] = defended_context
+            context_dicts["avfilter"] = defended_context
+
+        if self.config.filterrag_config.use_filterrag and self.filterrag:
+            print(f"\n\t[Defense] Applying FilterRAG defense...", end=" ", flush=True)
+            defense_inputs = context_dicts["final_context"]
+
+            defended_context, rejected_context, filterrag_metadata = self.filterrag.apply(
+                question=question,
+                documents=defense_inputs
+            )
+
+            defense_metadata["filterrag"] = {
+                "defense_input": defense_inputs,
+                "rejected_context": rejected_context,
+                "metadata": filterrag_metadata,
+            }
+
+            context = [doc.get("text", "") for doc in defended_context]
+            context_dicts["final_context"] = defended_context
+            context_dicts["filterrag"] = defended_context
+        
         try:
             if self.config.robustrag_config.use_robustrag and self.robustrag:
             
-                    answer, robustrag_info = self.robustrag.apply(
-                        question=question,
-                        documents=context_dicts["final_context"],
-                        llm=self.llm,
-                    )
-        
-                    defense_metadata["robustrag"] = robustrag_info
+                answer, robustrag_info = self.robustrag.apply(
+                    question=question,
+                    documents=context_dicts["final_context"],
+                    llm=self.llm,
+                )
+    
+                defense_metadata["robustrag"] = robustrag_info
             # Apply HODOR defense if enabled
             elif self.config.hodor_config.use_hodor and self.hodor:
                 answer, self.last_hodor_info = self.hodor.apply(question, context)
@@ -659,9 +743,13 @@ class InceptionRAGAttacker:
         result["retrieval_first_k_context"] = context_dicts["retrieval_first_k"]
         result["retrieval_top_k_context"] = context_dicts["retrieval_top_k"]
         if self.config.reranker:
-            result["reranker_top_k_context"] = context_dicts["final_context"]
+            result["reranker_top_k_context"] = context_dicts.get("reranker_top_k") or context_dicts.get("final_context")
         if self.config.trustrag_config.use_trustrag:
             result["trustrag_context"] = context_dicts["trustrag"]
+        if self.config.avfilter_config.use_avfilter:
+            result["avfilter_context"] = context_dicts["avfilter"]
+        if self.config.filterrag_config.use_filterrag:
+            result["filterrag_context"] = context_dicts["filterrag"]
             
         result["defenses"] = defense_metadata
         
@@ -688,9 +776,13 @@ class InceptionRAGAttacker:
                 result["retrieval_first_k_context"] = context_dicts["retrieval_first_k"]
                 result["retrieval_top_k_context"] = context_dicts["retrieval_top_k"]
                 if self.config.reranker:
-                    result["reranker_top_k_context"] = context_dicts["final_context"]
+                    result["reranker_top_k_context"] = context_dicts.get("reranker_top_k") or context_dicts.get("final_context")
                 if self.config.trustrag_config.use_trustrag:
                     result["trustrag_context"] = context_dicts["trustrag"]
+                if self.config.avfilter_config.use_avfilter:
+                    result["avfilter_context"] = context_dicts["avfilter"]
+                if self.config.filterrag_config.use_filterrag:
+                    result["filterrag_context"] = context_dicts["filterrag"]
                     
                 result["defenses"] = defense_metadata
                 
@@ -716,9 +808,13 @@ class InceptionRAGAttacker:
                 result["retrieval_first_k_context"] = context_dicts["retrieval_first_k"]
                 result["retrieval_top_k_context"] = context_dicts["retrieval_top_k"]
                 if self.config.reranker:
-                    result["reranker_top_k_context"] = context_dicts["final_context"]
+                    result["reranker_top_k_context"] = context_dicts.get("reranker_top_k") or context_dicts.get("final_context")
                 if self.config.trustrag_config.use_trustrag:
                     result["trustrag_context"] = context_dicts["trustrag"]
+                if self.config.avfilter_config.use_avfilter:
+                    result["avfilter_context"] = context_dicts["avfilter"]
+                if self.config.filterrag_config.use_filterrag:
+                    result["filterrag_context"] = context_dicts["filterrag"]
                     
                 result["defenses"] = defense_metadata
                 
@@ -1060,8 +1156,11 @@ class AdvCorpusPipeline:
                 corpus.append(document)
         return corpus
 
-    def merge_wiki_adv(self, wiki_file: Path, adv_file: Path, golden_file: Path) -> List[str]:
-        return self.load_jsonl_corpus(wiki_file) + self.load_jsonl_corpus(golden_file) + self.load_jsonl_corpus(adv_file)
+    def merge_wiki_adv(self, wiki_file: Path, golden_file: Path, adv_file: Optional[Path] = None) -> List[str]:
+        corpus = self.load_jsonl_corpus(wiki_file) + self.load_jsonl_corpus(golden_file) 
+        if adv_file:
+            corpus += self.load_jsonl_corpus(adv_file)
+        return corpus
 
     # -------------------------------------------------------------- tokenizers
 
@@ -1224,15 +1323,15 @@ class AdvCorpusPipeline:
         if file.exists():
             return file
         print(f"Wiki Corpus not found at {file}")
-        if not gol:
+        if not golden_arg:
             print("Please run 'data/download_wiki_corpus.py' first")
         return None
 
     def prepare_corpus(
         self,
         wiki_file: Path,
-        adv_file: Path,
         golden_file: Path,
+        adv_file: Optional[Path] = None,
         custom_texts: Optional[Path] = None,
         custom_embs: Optional[Path] = None,
     ) -> Tuple[Path, Path]:
@@ -1269,6 +1368,8 @@ def load_corpus(filename):
 
     return docs 
 
+
+
 # ============================================================================
 # Metrics
 # ============================================================================
@@ -1281,11 +1382,23 @@ def query_metrics_by_query_id(query_level_metrics: List):
         
     return query_metrics_mapping
 
-def add_metrics(ad_file: str, corpus_file: str, output_file: str, llm_judge_client):
+def add_metrics(
+        ad_file: str, 
+        corpus_file: str,
+        output_file: str, 
+        config: InceptionRAGConfig, 
+        llm_judge_config: LLMConfig
+    ):
     with open(output_file, "r", encoding="utf-8") as f:
         output = json.load(f)
         
-    metrics = compute_metrics(ad_file, corpus_file, output_file, use_llm_judge=True, judge_client=llm_judge_client)
+    metrics = compute_metrics(
+        ad_file, 
+        corpus_file, 
+        output_file, 
+        use_llm_judge=config.metrics_llm_judge, 
+        judge_client=create_llm_client(llm_judge_config)
+    )
     query_metrics_mapping = query_metrics_by_query_id(metrics.get("queries", []))
     
     overall_metrics = metrics.get("overall", {})
@@ -1359,8 +1472,11 @@ def main():
     parser.add_argument("--zoso-golden-size", type=int, default=40, help="ZOSO golden set size")
     
     # Defense options
+    # 1. HODOR
     parser.add_argument("--hodor", action="store_true", help="Enable HODOR defense (Document-Level Majority Voting)")
     parser.add_argument("--hodor-model", type=str, default="gemini-2.0-flash", help="Model for HODOR voting")
+
+    # 2. TrustRAG
     parser.add_argument("--use-trustrag", action="store_true", help="Enable TrustRAG defense")
     parser.add_argument("--trustrag-stage1", action="store_true", help="Enable stage 1 in TrustRAG (KMeans clustering)")
     parser.add_argument("--trustrag-stage2", action="store_true", help="Enable stage 2 in TrustRAG (internal knowledge consolidation)")
@@ -1368,11 +1484,36 @@ def main():
     parser.add_argument("--trustrag-rouge-thresh", type=float, default=0.25, help="Threshold for pairwise ROUGE-L similarity for TrustRAG stage1 KMeans clusters")
     parser.add_argument("--trustrag-cohesion-thresh", type=float, default=0.85, help="Threshold hold for within-cluster cosine similarity in TrustRAG stage1")
 
+    # 3. AVFilter
+    parser.add_argument("--use-avfilter", action="store_true", help="Enable AVFilter defense")
+    parser.add_argument("--avfilter-top-tokens", type=int, default=1000000, help="number of tokens considered for norm score")
+    parser.add_argument("--avfilter-max-new-tokens", type=int, default=24, help="number of tokens model generates for output")
+    parser.add_argument("--avfilter-max-removal", type=int, default=2, help="number of adversarial documents per query")
+    parser.add_argument("--avfilter-sort-passes", type=int, default=2, help="how many times to initially sort the documents based on attention scores")
+    parser.add_argument("--avfilter-no-keep-order", action="store_true", help="Whether to keep the defended documents in their original input order")
+
+    # 4. FilterRAG
+    parser.add_argument("--use-filterrag", action="store_true", help="Enable FilterRAG defense")
+    parser.add_argument("--filterrag-epsilon", type=float, default=0.2, help="Passage frequency-density score threshold")
+    parser.add_argument("--filterrag-semantic-thresh", type=float, default=0.6, help="cosine similarity theshold")
+    parser.add_argument("--filterrag-max-new-tokens", type=int, default=64, help="number of tokens model generates for output")
+    parser.add_argument("--filterrag-embedding-model", type=str, default="sentence-transformers/all-MiniLM-L6-v2", help="Model name of sentence transformers embedding model")
+
+    # 5. RobustRAG
+    parser.add_argument("--use-robustrag", action="store_true", help="Enable RobustRAG defense")
+    parser.add_argument("--robustrag-relative-thresh", type=float, default=0.2, help="relative keyword filtering theshold (fraction of non-abstaining responses for keywork)")
+    parser.add_argument("--robustrag-absolute-thresh", type=int, default=3, help="absolute keyword filtering threshold (absolute cap on relative threshold)")
+    parser.add_argument("--robustrag-abstention-thresh", type=int, default=1, help="Minimum number of non-abstained responses required")
+    parser.add_argument("--roustrag-max-tokens", type=int, default=100, help="number of tokens model generates for output")
+
+    # Metrics
     parser.add_argument("--add-gt", action="store_true", help="add ground truth information to ourput JSON file")
     parser.add_argument("--llm-judge", action="store_true", help="Use an llm as judge to get more accurate ASR")
     parser.add_argument("--llm-judge-model", type=str, default="Qwen/Qwen2.5-7B-Instruct", help="separate model to run llm as ASR judge")
+    parser.add_argument("--no-run-metrics-llm-judge", action="store_true", help="Disable the metrics' LLM-judge")
     parser.add_argument("--similarity", action="store_true", help="Measure the similarity between the target answer and the llm response")
 
+    # Chunking
     parser.add_argument("--chunk", action="store_true", help="Use chunking")
     parser.add_argument("--adv-docs", type=str, default=None, help="path to adversarial passages")
     parser.add_argument("--wiki-corpus", type=str, default=None, help="path to wiki corpus")
@@ -1383,6 +1524,7 @@ def main():
     parser.add_argument("--custom-corpus_texts", type=str, default=None, help="chunked corpus texts JSON")
     parser.add_argument("--custom-corpus_embs", type=str, default=None, help="chunked corpus embeddings NPY")
 
+    # Reranking
     parser.add_argument("--use_reranker", action="store_true", help="use a reranker")
     parser.add_argument("--reranker-model", type=str, default="cross-encoder/ms-marco-MiniLM-L-6-v2", help="HuggingFace Reranker model")
     parser.add_argument("--reranker-top-k", type=int, default=5, help="number of docs to send to llm")
@@ -1390,8 +1532,8 @@ def main():
     args = parser.parse_args()
     
     # Resume from checkpoint
-    #output_path = Path(args.output)
-    #if output_path and output_path.exists():
+    # output_path = Path(args.output)
+    # if output_path and output_path.exists():
     #    with open(output_path, "r") as f:
     #        data = json.load(f)
     #        results = data.get("results", [])
@@ -1401,7 +1543,6 @@ def main():
     if args.config:
         # Load from config file
         llm_config = LLMConfig.from_yaml(args.config)
-        
 
         with open(args.config, "r") as f:
             config_data = yaml.safe_load(f)
@@ -1417,6 +1558,10 @@ def main():
         args.dataset = data_cfg.get("dataset", "hotpotqa")
         args.data_root = str(data_cfg.get("data_root", f"/tmp/{os.environ['USER']}/InceptionRAG_data")).strip()
 
+        avfilter_llm_config = copy.deepcopy(llm_config)
+        avfilter_llm_config.attn_implementation = "eager"
+        avfilter_llm_client = create_llm_client(avfilter_llm_config)
+        avfilter_config = AVFilterConfig.from_yaml(args.config, avfilter_llm_client)
 
         # Full config
         config = InceptionRAGConfig(
@@ -1430,6 +1575,7 @@ def main():
             # metrics
             llm_judge=args.llm_judge,
             llm_juddge_config=llm_judge_config,
+            metrics_llm_judge=llm_data.get("run_metrics_llm_judge", True),
             measure_similarity=args.similarity,
             # chunking
             chunking=attack_changes_cfg.get("chunk", False),
@@ -1444,8 +1590,14 @@ def main():
             hodor_config=HODORConfig.from_yaml(args.config),
             trustrag_config=TrustRAGConfig.from_yaml(args.config),
             robustrag_config=RobustRAGConfig.from_yaml(args.config),
+            avfilter_config=avfilter_config,
+            filterrag_config=FilterRAGConfig.from_yaml(args.config)
+
         )
         
+        if config.avfilter_config.use_avfilter:    
+            config.avfilter_config = init_score_fn(config.avfilter_config)
+            
     else:
         # Build from CLI args
         if not args.api_key:
@@ -1462,6 +1614,8 @@ def main():
             deployment=args.azure_deployment or "",
             model=args.model,
         )
+        init_llm_client = create_llm_client(llm_config)
+
         llm_judge_config = copy.deepcopy(llm_config)
         llm_judge_config.model = args.llm_judge_model
         
@@ -1477,6 +1631,35 @@ def main():
             rouge_threshold=args.trustrag_rouge_thresh,
             cohesion_threshold=args.trustrag_cohesion_thresh
         )
+        avfilter_config = AVFilterConfig(
+            use_avfilter=args.use_avfilter,
+            top_tokens=args.avfilter_top_tokens,
+            max_new_tokens=args.avfilter_max_new_tokens,
+            tokenizer=init_llm_client._tokenizer,
+            model=init_llm_client._model,
+            max_removals=args.avfilter_max_removals,
+            sort_passes=args.avfilter_sort_passes,
+            keep_order=not args.avfilter_no_keep_order
+        )
+        avfilter_config = init_score_fn(avfilter_config)
+
+        filterrag_config = FilterRAGConfig(
+            use_filterrag=args.use_filterrag,
+            epsilon=args.filterrag_epsilon,
+            semantic_threshold=args.filterrag_semantic_thresh,
+            max_new_tokens=args.filterrag_max_new_tokens,
+            embedding_model=args.filterrag_embedding_model,
+            embedding_device="cuda" if torch.cuda.is_available() else "cpu",
+        )
+
+        robustrag_config = RobustRAGConfig(
+            use_robustrag=args.use_robustrag,
+            relative_threshold=args.robustrag_relative_thresh,
+            absolute_threshold=args.robustrag_absolute_thresh,
+            abstention_threshold=args.robustrag_abstention_thresh,
+            max_tokens=args.robustrag_max_tokens,
+        )
+
     
         # Full config
         config = InceptionRAGConfig(
@@ -1490,6 +1673,7 @@ def main():
             # metrics
             llm_judge=args.llm_judge,
             llm_juddge_config=llm_judge_config,
+            metrics_llm_judge=not args.no_run_metrics_llm_judge,
             measure_similarity=args.similarity,
             # chunking
             chunking=args.chunk,
@@ -1503,6 +1687,9 @@ def main():
             # defenses
             hodor_config=hodor_config,
             trustrag_config=trustrag_config,
+            avfilter_config=avfilter_config,
+            filterrag_config=filterrag_config,
+            robustrag_config=robustrag_config
         )
     
     print("=" * 60)
@@ -1553,8 +1740,6 @@ def main():
         if not args.zoso_only:
             
             ds = args.dataset.lower()
-            nq_corpus_path = str(DATA_ROOT / f"datasets/{ds}/corpus.jsonl")
-            corpus = load_corpus(nq_corpus_path)
                 
             print(f"\n  [Stage 1.1] Loading queries from: {input_path}")
             with open(input_path, "r") as f:
@@ -1698,35 +1883,40 @@ def main():
         return
     
     # Load data
-    print("\n[1/5] Loading data...")
+    step = 1
+    print(f"\nStep {step}: Loading data...")
     with open(args.data, "r") as f:
         all_data = json.load(f)
     if args.limit:
         all_data = all_data[:args.limit]
     print(f"  Samples: {len(all_data)} (from {args.data})")
+    step += 1
     
     # Load Contriever
-    print("\n[2/5] Loading Contriever...")
+    print(f"\nStep {step}: Loading Contriever...")
     contriever_tokenizer = AutoTokenizer.from_pretrained("facebook/contriever")
     contriever = AutoModel.from_pretrained("facebook/contriever").eval()
     device = "cuda" if torch.cuda.is_available() else "cpu"
     contriever = contriever.to(device)
     print(f"  Device: {device}")
+    step += 1
     
     # Load suffix pool
-    print("\n[3/5] Loading suffix pool...")
+    print(f"\nStep {step}: Loading suffix pool...")
     suffix_pool = SuffixPool(Path(args.suffix_pool))
+    step += 1
 
         
     
     # ========== Stage 1.4: ZOSO Suffix Optimization (if --stage1 or --zoso-only) ==========
     if args.stage1 or args.zoso_only:
         # Load corpus
-        print("\n[4/5] Loading corpus...")
+        print(f"\nStep {step}: Loading ZOSO corpus...")
         corpus_embs = np.load(args.corpus_embs)
         with open(args.corpus_texts, "r") as f:
             corpus_texts = json.load(f)
         print(f"  Corpus: {len(corpus_texts)} docs")
+        step += 1
 
         print("\n  [Stage 1.4] ZOSO Suffix Optimization...")
         print("  " + "-" * 50)
@@ -1805,7 +1995,7 @@ def main():
     
     # ========== CHUNKING ==========
     if config.chunking:
-        print("\n[3.5/5] Chunking corpus...")
+        print(f"\nStep {step}: Chunking corpus...")
 
         pipeline = AdvCorpusPipeline(config, contriever, contriever_tokenizer, DATA_ROOT, ds)
 
@@ -1827,14 +2017,72 @@ def main():
             return
 
         args.corpus_texts, args.corpus_embs = pipeline.prepare_corpus(
-            wiki_file, adv_file, golden_file, args.custom_corpus_texts, args.custom_corpus_embs
+            wiki_file, golden_file, adv_file, args.custom_corpus_texts, args.custom_corpus_embs
         )
+        step += 1
 
-    print("\n[4/5] Loading corpus...")
+
+    # AVFilter filtering threshold calibration
+    if config.avfilter_config.use_avfilter:
+        print(f"\nStep {step}: Calibrating AVFiter threshold...")
+        reranker = PassageReranker(config.reranker_model, config.reranker_top_k) if config.reranker else None
+
+        print("Getting benign corpus...")
+        if config.chunking:
+            wiki_file = pipeline.get_wiki_file(args.wiki_corpus)
+            if wiki_file is None:
+                return
+                
+            golden_file = pipeline.get_golden_file(args.golden_corpus)
+            if golden_file is None:
+                return
+    
+            benign_corpus_texts_file, benign_corpus_embs_file = pipeline.prepare_corpus(
+                wiki_file, golden_file, None, args.custom_corpus_texts, args.custom_corpus_embs
+            )
+
+            benign_corpus_embs = np.load(benign_corpus_embs_file)
+            with open(benign_corpus_texts_file, "r") as f:
+                benign_corpus_texts = json.load(f)
+
+        else:
+            benign_corpus_embs = np.load(args.corpus_embs)
+            with open(args.corpus_texts, "r") as f:
+                benign_corpus_texts = json.load(f)
+
+        benign_retriever = TwoStageRetriever(benign_corpus_texts, benign_corpus_embs, contriever, contriever_tokenizer, config, reranker)
+
+        queries_path = DATA_ROOT / f"datasets/{ds}/queries.jsonl"
+        with open(queries_path, "r") as f:
+            if queries_path.suffix == ".jsonl":
+                raw_items = [json.loads(line) for line in f]
+            else:
+                raw_items = json.load(f)
+
+        benign_batches = []
+        for item in tqdm(
+            raw_items[800:850],
+            desc="Retrieving benign contexts",
+            total=min(50, len(raw_items) - 800),
+        ):
+            question = item.get("question") or item.get("text", "")
+            context, _, context_dicts = benign_retriever.retrieve(question)
+            benign_batches.append((str(question), context_dicts["final_context"]))
+
+        print("Calibrating")
+        avfilter_threshold = calibrate_threshold(config.avfilter_config.score_fn, benign_batches, 0.05, 2)
+        avfilter_config.threshold = avfilter_threshold
+        print("AVFilter Threshold:", avfilter_threshold)
+        step += 1
+        
+
+
+    print(f"\nStep {step}: Loading attack corpus...")
     corpus_embs = np.load(args.corpus_embs)
     with open(args.corpus_texts, "r") as f:
         corpus_texts = json.load(f)
     print(f"  Corpus: {len(corpus_texts)} docs")
+    step += 1
 
     # ========== Stage 3: Attack (if not --skip-attack) ==========
     if args.skip_attack:
@@ -1845,11 +2093,13 @@ def main():
         return
     
     # Initialize
-    print("\n[5/5] Initializing attacker...")
+    print(f"\nStep {step}: Initializing attacker...")
 
     reranker = PassageReranker(config.reranker_model, config.reranker_top_k) if config.reranker else None
     retriever = TwoStageRetriever(corpus_texts, corpus_embs, contriever, contriever_tokenizer, config, reranker)
     attacker = InceptionRAGAttacker(config, suffix_pool, retriever, optimal_anchor_idx, optimal_bridge_idx, args.config)
+
+    print("Ready to attack!")
     
     # Attack
     print("\n" + "=" * 60)
@@ -1862,8 +2112,7 @@ def main():
     
     results = attacker.attack_batch(all_data, output_path)
     
-    llm_judge_client = create_llm_client(llm_judge_config)
-    add_metrics(args.data, args.corpus_texts, output_path, llm_judge_client)
+    add_metrics(args.data, args.corpus_texts, output_path, config, llm_judge_config)
 
     llm_judge_success = sum(
         1 for r in results

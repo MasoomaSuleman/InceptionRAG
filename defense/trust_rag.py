@@ -114,7 +114,7 @@ class TrustRAGDefense:
             match = re.search(r"\[.*\]", cleaned, flags=re.DOTALL)
             if match:
                 try:
-                    result = json.loads(match.group[0])
+                    result = json.loads(match.group(0))
                     return result if isinstance(result, list) else None
                 except json.JSONDecodeError:
                     return None
@@ -472,7 +472,7 @@ class TrustRAGDefense:
         }
         
         if stage1 and current_docs:
-            print(f"    [Defense] Applying TrustRAG Stage 1 filtering...", end=" ", flush=True)
+            print(f"\n\t\t[Defense] Applying TrustRAG Stage 1 filtering...", end=" ", flush=True)
             retained, rejected, stage1_details = self.stage1_filter(current_docs)
             
             rejected_context += [{**doc, "stage": "stage1"} for doc in rejected]
@@ -484,7 +484,7 @@ class TrustRAGDefense:
             current_docs = retained
             
         if stage2 and current_docs:
-            print(f"    [Defense] Applying TrustRAG Stage 2 consolidation...", end=" ", flush=True)
+            print(f"\n\t\t[Defense] Applying TrustRAG Stage 2 consolidation...", end=" ", flush=True)
             consolidated, rejected, stage2_details = self.stage2_filter(question, current_docs, llm)
             
             rejected_context += [{**doc, "stage": "stage2"} for doc in rejected]
