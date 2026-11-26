@@ -4,6 +4,7 @@ from collections import Counter
 from typing import Callable, Dict, List, Optional, Sequence, Tuple, Any
 from dataclasses import dataclass
 import yaml
+from tqdm import tqdm
 
 import torch
 import numpy as np
@@ -123,39 +124,77 @@ def freq_density(
 
     return total / len(doc_counts)
 
-def make_slm(
-        model_name: str, 
-        max_new_tokens: int = 64,
-        device_map: str = "auto"
-    ) -> SlmFn:
-        pipe = pipeline("text-generation", model=model_name, device_map=device_map)
+# def make_slm(
+#         model_name: str, 
+#         max_new_tokens: int = 64,
+#         device_map: str = "auto"
+#     ) -> SlmFn:
+#         pipe = pipeline("text-generation", model=model_name, device_map=device_map)
 
-        def slm(question: str, passage: str) -> str:
-            prompt = PROMPT_TEMPLATE.format(context=passage, question=question)
+#         def slm(question: str, passage: str) -> str:
+#             prompt = PROMPT_TEMPLATE.format(context=passage, question=question)
 
-            msgs = [{"role": "user", "content": prompt}]
-            if getattr(pipe.tokenizer, "chat_template", None):
-                prompt = pipe.tokenizer.apply_chat_template(
-                    msgs, tokenize=False, add_generation_prompt=True
+#             msgs = [{"role": "user", "content": prompt}]
+#             if getattr(pipe.tokenizer, "chat_template", None):
+#                 prompt = pipe.tokenizer.apply_chat_template(
+#                     msgs, tokenize=False, add_generation_prompt=True
+#                 )
+
+#             output = pipe(
+#                 prompt,
+#                 max_new_tokens=max_new_tokens,
+#                 do_sample=False,
+#                 return_full_text=False,
+#                 pad_token_id=pipe.tokenizer.eos_token_id,
+#             )
+
+#             answer = output[0]["generated_text"].strip()
+#             if not answer:
+#                 raise RuntimeError("FilterRAG: SLM generated an empty answer")
+
+#             return answer
+
+#         return slm
+
+
+def calibrate_epsilon(
+    filterrag: "FilterRAG",
+    benign_batches: Sequence[Tuple[str, Sequence[dict]]],
+    target_fpr: float = 0.05,
+):
+    if not 0.0 <= target_fpr < 1.0:
+        raise ValueError("FilterRAG Calibration: target_fpr must be [0, 1)")
+
+    densities = []
+    total = sum(len(docs) for _, docs in benign_batches)
+    with tqdm(total=total, desc="Scoring benign passages", unit="passage") as pbar:
+        for question, docs in benign_batches:
+            for idx, doc in enumerate(docs):
+                text = doc.get("text", "")
+                if not isinstance(text, str):
+                    raise ValueError(f"FIlterRAG: Invalid passage text at index {idx}")
+                answer = filterrag.gen_answer(question, text)
+                d = freq_density(
+                    passage_text=text,
+                    query=question,
+                    slm_answer=answer,
+                    sim_threshold=filterrag.semantic_threshold,
+                    matcher=filterrag.matcher
                 )
+                if not np.isfinite(d):
+                    raise ValueError("FilterRAG: Invalid frequency-density score")
 
-            output = pipe(
-                prompt,
-                max_new_tokens=max_new_tokens,
-                do_sample=False,
-                return_full_text=False,
-                pad_token_id=pipe.tokenizer.eos_token_id,
-            )
+                densities.append(float(d))
+                pbar.update(1)
 
-            answer = output[0]["generated_text"].strip()
-            if not answer:
-                raise RuntimeError("FilterRAG: SLM generated an empty answer")
+    if not densities:
+        raise ValueError("FilterRAG: no benign passages to calibrate on")
 
-            return answer
+    benign = np.array(densities)
+    q = float(np.quantile(benign, 1.0 - target_fpr, method="higher"))
+    epsilon = float(np.nextafter(q, np.inf))
 
-        return slm
-
-
+    return epsilon
 
 
 class FilterRAG:

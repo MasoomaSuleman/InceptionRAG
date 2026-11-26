@@ -32,7 +32,8 @@ from .defense import (
     calibrate_threshold,
     init_score_fn,
     FilterRAG,
-    FilterRAGConfig
+    FilterRAGConfig,
+    calibrate_epsilon
 )
 
 import warnings
@@ -2023,8 +2024,8 @@ def main():
 
 
     # AVFilter filtering threshold calibration
-    if config.avfilter_config.use_avfilter:
-        print(f"\nStep {step}: Calibrating AVFiter threshold...")
+    if config.avfilter_config.use_avfilter or config.filterrag_config.use_filterrag:
+        print(f"\nStep {step}: Calibrating thresholds...")
         reranker = PassageReranker(config.reranker_model, config.reranker_top_k) if config.reranker else None
 
         print("Getting benign corpus...")
@@ -2061,18 +2062,36 @@ def main():
 
         benign_batches = []
         for item in tqdm(
-            raw_items[800:850],
+            raw_items[800:1000],
             desc="Retrieving benign contexts",
-            total=min(50, len(raw_items) - 800),
+            total=min(200, len(raw_items) - 800),
         ):
             question = item.get("question") or item.get("text", "")
             context, _, context_dicts = benign_retriever.retrieve(question)
             benign_batches.append((str(question), context_dicts["final_context"]))
 
+
         print("Calibrating")
-        avfilter_threshold = calibrate_threshold(config.avfilter_config.score_fn, benign_batches, 0.05, 2)
-        avfilter_config.threshold = avfilter_threshold
-        print("AVFilter Threshold:", avfilter_threshold)
+
+        if config.avfilter_config.use_avfilter:
+            avfilter_threshold = calibrate_threshold(config.avfilter_config.score_fn, benign_batches, 0.05, 2)
+            avfilter_config.threshold = avfilter_threshold
+            print("AVFilter Threshold:", avfilter_threshold)
+        if config.filterrag_config.use_filterrag:
+            fr_cfg = config.filterrag_config
+            llm = create_llm_client(llm_config)
+            filterrag = FilterRAG(
+                slm=llm._model,
+                tokenizer=llm._tokenizer,
+                epsilon=fr_cfg.epsilon,
+                semantic_threshold=fr_cfg.semantic_threshold,
+                max_new_tokens=fr_cfg.max_new_tokens,
+                embedding_model=fr_cfg.embedding_model,
+                embedding_device=fr_cfg.embedding_device,
+            )
+            filterrag_epsilon = calibrate_epsilon(filterrag, benign_batches, 0.05)
+            config.filterrag_config.epsilon = filterrag_epsilon
+            print("FilterRAG Epsilon:", filterrag_epsilon)
         step += 1
         
 

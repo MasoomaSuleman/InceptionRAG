@@ -9,7 +9,7 @@ from .hodor import HODORDefense, HODORConfig
 from .trust_rag import TrustRAGDefense, TrustRAGConfig
 from .robust_rag import RobustRAGDefense, RobustRAGConfig
 from .av_filter import AVFilter, AVFilterConfig, calibrate_threshold, init_score_fn
-from .filterrag import FilterRAG, FilterRAGConfig
+from .filterrag import FilterRAG, FilterRAGConfig, calibrate_epsilon    
 
 __all__ = [
     "HODORDefense",
@@ -23,6 +23,7 @@ __all__ = [
     "calibrate_threshold"
     "init_score_fn"
     "FilterRAG",
-    "FilterRAGConfig"
+    "FilterRAGConfig",
+    "calibrate_epsilon"
 ]
 
