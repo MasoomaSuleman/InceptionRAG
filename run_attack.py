@@ -532,7 +532,7 @@ class InceptionRAGAttacker:
         Uses final-answer-only substring matching with expanded answer support.
         Priority: expanded answer > target answer
         """
-        target = item.get("incorrect answer") or item.get("incorrect_answer") or ""
+        target = item.get("incorrect answer") or item.get("incorrect_answer") or item.get("target") or item.get("target_answer") or ""
         expanded = item.get("expanded answer", [])
         
         # Build candidate list (aligned with main_attack.py)
