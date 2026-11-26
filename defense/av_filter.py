@@ -168,7 +168,12 @@ class AVFilter:
             removed_idxs.append(og_texts[j][0])
             og_texts.pop(j)
 
-        kept_pairs = sorted(og_texts, key=lambda p: p[0]) if self.keep_order else og_texts
+        paired = list(zip(og_texts, scores))
+        if self.keep_order:
+            paired.sort(key=lambda x: x[0][0])
+
+        kept_pairs = [p for p, _ in paired]
+        reordered_scores = [s for _, s in paired]
 
         retained_valid_idxs = [valid_indices[i] for i, _ in kept_pairs]
         retained_docuemnts = [documents[i] for i in retained_valid_idxs]
