@@ -181,7 +181,7 @@ class AVFilter:
         removed_valid_idxs = [valid_indices[i] for i in removed_idxs]
         removed_documents = [documents[i] for i in removed_valid_idxs]
 
-        reordered_scores = [scores[i] for i, _ in kept_pairs]
+        # reordered_scores = [scores[i] for i, _ in kept_pairs]
 
         metadata = {
             "variances": variances,

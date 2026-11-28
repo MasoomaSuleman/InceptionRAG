@@ -13,11 +13,11 @@ llm:
   api_base: "http://localhost:8000/v1"
   model: "Qwen/Qwen2.5-3B-Instruct" #"zai-org/GLM-5.3"
   llm_judge_model: "Qwen/Qwen2.5-7B-Instruct"
-  run_metrics_llm_judge: false
+  run_metrics_llm_judge: true
   
 data:
-  dataset: "nq"
-  data_root: "/tmp/alegault/InceptionRAG_data"
+  dataset: "hotpotqa"
+  data_root: "/tmp/masoo20/inception_rag/"
 
 attack: 
   retrieval_top_k: 20
@@ -25,6 +25,8 @@ attack:
   cttft_neighbor_k: 10
   noise_injection: true
   dual_injection: true
+  semantic_paraphrase_injection: true
+  add_additional_adv_passages: 2   # 0=2 docs, 1=4 docs, 2=6 docs, ...
   
 attack_changes:
   chunk: false
